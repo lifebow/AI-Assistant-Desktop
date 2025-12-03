@@ -1,0 +1,64 @@
+export type Provider = 'openai' | 'google' | 'anthropic' | 'openrouter';
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  content: string;
+  immediate?: boolean;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  image?: string; // Data URL
+}
+
+export interface ApiConfig {
+  provider: Provider;
+  apiKey: string;
+  baseUrl?: string;
+  model?: string;
+}
+
+export interface AppConfig {
+  apiKeys: Record<Provider, string[]>; // Allow multiple keys per provider
+  selectedProvider: Provider;
+  customBaseUrls: Record<Provider, string>;
+  prompts: PromptTemplate[];
+  selectedModel: Record<Provider, string>;
+  customHotkey: {
+      key: string;
+      modifiers: string[];
+  } | null;
+}
+
+export const DEFAULT_PROMPTS: PromptTemplate[] = [
+  { id: '1', name: 'Summarize', content: 'Summarize the following text:\n\n${text}' },
+  { id: '2', name: 'Explain', content: 'Explain this text in simple terms:\n\n${text}' },
+  { id: '3', name: 'Translate to English', content: 'Translate the following text to English:\n\n${text}' },
+  { id: '4', name: 'Fix Grammar', content: 'Fix the grammar and improve the writing of the following text:\n\n${text}' },
+];
+
+export const DEFAULT_CONFIG: AppConfig = {
+  apiKeys: {
+    openai: [],
+    google: [],
+    anthropic: [],
+    openrouter: [],
+  },
+  selectedProvider: 'google',
+  customBaseUrls: {
+    openai: 'https://api.openai.com/v1',
+    google: 'https://generativelanguage.googleapis.com/v1beta',
+    anthropic: 'https://api.anthropic.com/v1',
+    openrouter: 'https://openrouter.ai/api/v1',
+  },
+  prompts: DEFAULT_PROMPTS,
+  selectedModel: {
+    openai: 'gpt-4o-mini',
+    google: 'gemini-1.5-flash',
+    anthropic: 'claude-3-haiku-20240307',
+    openrouter: 'google/gemini-2.0-flash-exp:free',
+  },
+  customHotkey: null
+};
