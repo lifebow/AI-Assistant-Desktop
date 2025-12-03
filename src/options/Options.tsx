@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { type AppConfig, DEFAULT_CONFIG, type Provider, type PromptTemplate } from '../lib/types';
 import { getStorage, setStorage } from '../lib/storage';
 import { fetchModels } from '../lib/api';
+import { useTheme } from '../lib/hooks';
 import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, ChevronDown, Keyboard } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -24,6 +25,8 @@ export default function Options() {
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [isCustomModel, setIsCustomModel] = useState<Record<string, boolean>>({});
   const [recordingHotkey, setRecordingHotkey] = useState(false);
+
+  useTheme(config);
 
   useEffect(() => {
     getStorage().then((data) => {
@@ -128,7 +131,7 @@ export default function Options() {
   };
 
   if (loading) return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-gpt-main text-slate-500 dark:text-gpt-secondary">
           <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               <p className="text-sm font-medium">Loading settings...</p>
@@ -137,26 +140,26 @@ export default function Options() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-blue-100 selection:text-blue-900 pb-20">
+    <div className="min-h-screen bg-slate-50 dark:bg-gpt-main font-sans text-slate-800 dark:text-gpt-text selection:bg-blue-100 selection:text-blue-900 pb-20">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+      <div className="bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover sticky top-0 z-10 shadow-sm">
           <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
                 <img src="/icons/icon48.png" alt="Logo" className="w-10 h-10" />
                 <div>
-                    <h1 className="text-xl font-bold text-slate-900 tracking-tight">AI Assistant</h1>
-                    <p className="text-slate-500 text-xs font-medium">Extension Configuration</p>
+                    <h1 className="text-xl font-bold text-slate-900 dark:text-gpt-text tracking-tight">AI Assistant</h1>
+                    <p className="text-slate-500 dark:text-gpt-secondary text-xs font-medium">Extension Configuration</p>
                 </div>
             </div>
             
-            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/60">
+            <div className="flex gap-1 bg-slate-100 dark:bg-gpt-input p-1 rounded-lg border border-slate-200/60 dark:border-gpt-hover">
                 <button 
                     onClick={() => setActiveTab('general')}
                     className={clsx(
                         "px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 flex items-center gap-2",
                         activeTab === 'general' 
-                            ? "bg-white text-blue-600 shadow-sm ring-1 ring-slate-200" 
-                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                            ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
+                            : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
                     )}
                 >
                     <Settings2 size={16} /> General
@@ -166,8 +169,8 @@ export default function Options() {
                     className={clsx(
                         "px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 flex items-center gap-2",
                         activeTab === 'prompts' 
-                            ? "bg-white text-blue-600 shadow-sm ring-1 ring-slate-200" 
-                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                            ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
+                            : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
                     )}
                 >
                     <MessageSquareText size={16} /> Prompts
@@ -177,8 +180,8 @@ export default function Options() {
                     className={clsx(
                         "px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 flex items-center gap-2",
                         activeTab === 'hotkeys' 
-                            ? "bg-white text-blue-600 shadow-sm ring-1 ring-slate-200" 
-                            : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                            ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
+                            : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
                     )}
                 >
                     <Keyboard size={16} /> Hotkeys
@@ -190,7 +193,7 @@ export default function Options() {
       <div className="max-w-4xl mx-auto p-6 md:py-10">
           {/* Success Toast */}
           <div className={clsx(
-              "fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform z-50",
+              "fixed bottom-6 right-6 bg-slate-900 dark:bg-gpt-sidebar text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform z-50 border border-transparent dark:border-gpt-hover",
               savedToast ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0 pointer-events-none"
           )}>
               <CheckCircle2 className="text-green-400" size={20} />
@@ -200,19 +203,43 @@ export default function Options() {
           {activeTab === 'general' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
+                <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-4 flex items-center gap-2">
+                        <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                        Appearance
+                    </h3>
+                    <div className="max-w-md">
+                         <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Theme</label>
+                        <div className="relative">
+                            <select 
+                                value={config.theme || 'system'}
+                                onChange={(e) => saveConfig({ ...config, theme: e.target.value as 'system' | 'light' | 'dark' })}
+                                className="w-full p-3 bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 dark:text-gpt-text appearance-none"
+                            >
+                                <option value="system">System Default</option>
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                            </select>
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                <Settings2 size={16} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Default Provider Card */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                    <h3 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-4 flex items-center gap-2">
                         <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                         Default Provider
                     </h3>
                     <div className="max-w-md">
-                         <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Select Provider</label>
+                         <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Select Provider</label>
                         <div className="relative">
                             <select 
                                 value={config.selectedProvider}
                                 onChange={(e) => saveConfig({ ...config, selectedProvider: e.target.value as Provider })}
-                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 appearance-none"
+                                className="w-full p-3 bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 dark:text-gpt-text appearance-none"
                             >
                                 {Providers.map(p => <option key={p} value={p}>{ProviderDisplayNames[p]}</option>)}
                             </select>
@@ -220,21 +247,21 @@ export default function Options() {
                                 <Settings2 size={16} />
                             </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-2">This provider will be selected by default when you open the popup.</p>
+                        <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2">This provider will be selected by default when you open the popup.</p>
                     </div>
                 </div>
 
                 {/* API Configuration Grid */}
                 <div className="grid grid-cols-1 gap-6">
                     {Providers.map((provider) => (
-                        <div key={provider} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:shadow-md duration-300">
-                            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <div key={provider} className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover overflow-hidden transition-all hover:shadow-md duration-300">
+                            <div className="px-6 py-4 border-b border-slate-100 dark:border-gpt-hover bg-slate-50/50 dark:bg-gpt-hover/20 flex items-center justify-between">
+                                <h3 className="font-bold text-slate-800 dark:text-gpt-text flex items-center gap-2">
                                     {ProviderDisplayNames[provider]}
                                 </h3>
                                 <button
                                     onClick={() => handleAddKey(provider)}
-                                    className="text-xs font-semibold bg-white text-blue-600 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-50 hover:border-blue-200 transition-colors flex items-center gap-1.5 shadow-sm"
+                                    className="text-xs font-semibold bg-white dark:bg-gpt-input text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-gpt-hover px-3 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-gpt-hover hover:border-blue-200 transition-colors flex items-center gap-1.5 shadow-sm"
                                 >
                                     <Plus size={14} /> Add Key
                                 </button>
@@ -245,11 +272,11 @@ export default function Options() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div>
                                         <div className="flex items-center justify-between mb-1.5">
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Model ID</label>
+                                            <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary uppercase tracking-wider">Model ID</label>
                                             {provider !== 'anthropic' && (
                                                 <button 
                                                     onClick={() => handleFetchModels(provider)}
-                                                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded hover:bg-blue-100 transition-colors"
+                                                    className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 bg-blue-50 dark:bg-gpt-hover px-2 py-0.5 rounded hover:bg-blue-100 transition-colors"
                                                     disabled={fetchingModels[provider]}
                                                 >
                                                     {fetchingModels[provider] ? <RefreshCw size={10} className="animate-spin" /> : <List size={10} />}
@@ -272,7 +299,7 @@ export default function Options() {
                                                                 })
                                                             }
                                                         }}
-                                                        className="w-full px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none pr-8 text-slate-700 font-medium"
+                                                        className="w-full px-3 py-2.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none pr-8 text-slate-700 dark:text-gpt-text font-medium"
                                                     >
                                                         {!fetchedModels[provider].includes(config.selectedModel[provider]) && config.selectedModel[provider] && (
                                                             <option value={config.selectedModel[provider]}>{config.selectedModel[provider]}</option>
@@ -294,7 +321,7 @@ export default function Options() {
                                                             ...config,
                                                             selectedModel: { ...config.selectedModel, [provider]: e.target.value }
                                                         })}
-                                                        className="w-full px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                        className="w-full px-3 py-2.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-gpt-text"
                                                     />
                                                     {fetchedModels[provider]?.length > 0 && (
                                                         <button 
@@ -309,7 +336,7 @@ export default function Options() {
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Base URL <span className="text-slate-300 font-normal lowercase">(optional)</span></label>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Base URL <span className="text-slate-300 dark:text-gpt-hover font-normal lowercase">(optional)</span></label>
                                         <input
                                             type="text"
                                             placeholder="Default"
@@ -318,16 +345,16 @@ export default function Options() {
                                                 ...config,
                                                 customBaseUrls: { ...config.customBaseUrls, [provider]: e.target.value }
                                             })}
-                                            className="w-full px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300"
+                                            className="w-full px-3 py-2.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-gpt-hover dark:text-gpt-text"
                                         />
                                     </div>
                                 </div>
 
                                 {/* Keys List */}
                                 <div className="space-y-3">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">API Keys</label>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary uppercase tracking-wider">API Keys</label>
                                     {config.apiKeys[provider].length === 0 && (
-                                        <div className="text-sm text-slate-400 italic bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                                        <div className="text-sm text-slate-400 italic bg-slate-50 dark:bg-gpt-input p-4 rounded-lg border border-slate-100 dark:border-gpt-hover text-center">
                                             No API keys configured for {ProviderDisplayNames[provider]}.
                                         </div>
                                     )}
@@ -343,7 +370,7 @@ export default function Options() {
                                                     onChange={(e) => handleUpdateKey(provider, idx, e.target.value)}
                                                     onBlur={() => handleKeyBlur(provider)}
                                                     placeholder={`Enter ${ProviderDisplayNames[provider]} API Key`}
-                                                    className="w-full pl-9 pr-10 py-2.5 text-sm font-mono bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm group-hover:border-slate-300"
+                                                    className="w-full pl-9 pr-10 py-2.5 text-sm font-mono bg-white dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm group-hover:border-slate-300 dark:group-hover:border-gpt-text dark:text-gpt-text"
                                                 />
                                                 <button 
                                                     onClick={() => toggleShowKey(`${provider}-${idx}`)}
@@ -355,7 +382,7 @@ export default function Options() {
                                             </div>
                                             <button
                                                 onClick={() => handleRemoveKey(provider, idx)}
-                                                className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100"
                                                 title="Remove key"
                                             >
                                                 <Trash2 size={16} />
@@ -374,8 +401,8 @@ export default function Options() {
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex justify-between items-end">
                     <div>
-                        <h2 className="text-lg font-bold text-slate-900">Prompt Templates</h2>
-                        <p className="text-slate-500 text-sm mt-1">Customize the quick actions available in the popup.</p>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-gpt-text">Prompt Templates</h2>
+                        <p className="text-slate-500 dark:text-gpt-secondary text-sm mt-1">Customize the quick actions available in the popup.</p>
                     </div>
                     <button
                       onClick={handleAddPrompt}
@@ -387,17 +414,17 @@ export default function Options() {
 
                 <div className="grid grid-cols-1 gap-4">
                     {config.prompts.map((prompt, idx) => (
-                        <div key={prompt.id} className="group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 relative overflow-hidden">
+                        <div key={prompt.id} className="group bg-white dark:bg-gpt-sidebar border border-slate-200 dark:border-gpt-hover rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-300 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                             
                             <div className="flex justify-between items-start gap-4 mb-4">
                                 <div className="flex-1">
-                                    <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Name</label>
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-gpt-secondary mb-1 uppercase tracking-wider">Name</label>
                                     <input 
                                         type="text" 
                                         value={prompt.name}
                                         onChange={(e) => handleUpdatePrompt(idx, 'name', e.target.value)}
-                                        className="text-base font-bold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none px-0 py-1 transition-colors w-full"
+                                        className="text-base font-bold text-slate-900 dark:text-gpt-text bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-gpt-hover focus:border-blue-500 outline-none px-0 py-1 transition-colors w-full"
                                         placeholder="Prompt Name"
                                     />
                                 </div>
@@ -406,13 +433,25 @@ export default function Options() {
                                         <div className="relative">
                                             <input 
                                                 type="checkbox"
+                                                checked={!!prompt.onlyImage}
+                                                onChange={(e) => handleUpdatePrompt(idx, 'onlyImage', e.target.checked)}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                                        </div>
+                                        <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Only Image</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer group/checkbox">
+                                        <div className="relative">
+                                            <input 
+                                                type="checkbox"
                                                 checked={!!prompt.immediate}
                                                 onChange={(e) => handleUpdatePrompt(idx, 'immediate', e.target.checked)}
                                                 className="sr-only peer"
                                             />
-                                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                            <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                                         </div>
-                                        <span className="text-xs font-medium text-slate-500 group-hover/checkbox:text-slate-700">Instant Submit</span>
+                                        <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Instant Submit</span>
                                     </label>
                                     <button 
                                         onClick={() => handleRemovePrompt(idx)}
@@ -425,15 +464,15 @@ export default function Options() {
                             </div>
                             
                             <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Template Content</label>
+                                <label className="block text-xs font-bold text-slate-400 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Template Content</label>
                                 <textarea 
                                     value={prompt.content}
                                     onChange={(e) => handleUpdatePrompt(idx, 'content', e.target.value)}
-                                    className="w-full text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none min-h-[80px] resize-y transition-all font-mono"
+                                    className="w-full text-sm text-slate-600 dark:text-gpt-text bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl p-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none min-h-[80px] resize-y transition-all font-mono"
                                     placeholder="Prompt content..."
                                 />
-                                <p className="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
-                                    <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 font-mono text-[10px]">{`\${text}`}</span>
+                                <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2 flex items-center gap-1.5">
+                                    <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded border border-blue-100 dark:border-blue-800 font-mono text-[10px]">{`\${text}`}</span>
                                     will be replaced by your selected text.
                                 </p>
                             </div>
@@ -441,14 +480,14 @@ export default function Options() {
                     ))}
                 </div>
 
-                 <div className="flex justify-center pt-8 border-t border-slate-200 border-dashed">
+                 <div className="flex justify-center pt-8 border-t border-slate-200 border-dashed dark:border-gpt-hover">
                     <button 
                         onClick={() => {
                             if(confirm('Are you sure you want to reset all prompts to default?')) {
                                 saveConfig({ ...config, prompts: DEFAULT_CONFIG.prompts })
                             }
                         }}
-                        className="text-sm text-slate-400 hover:text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+                        className="text-sm text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 rounded-lg transition-all flex items-center gap-2"
                     >
                         <RotateCcw size={14} /> Reset Defaults
                     </button>
@@ -458,21 +497,21 @@ export default function Options() {
 
           {activeTab === 'hotkeys' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                      <h3 className="text-lg font-bold text-slate-900 mb-2">Global Shortcut</h3>
-                      <p className="text-sm text-slate-500 mb-6">
+                  <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-gpt-text mb-2">Global Shortcut</h3>
+                      <p className="text-sm text-slate-500 dark:text-gpt-secondary mb-6">
                           Define a keyboard shortcut to trigger the extension on any page.
                           Click the input box below and press your desired key combination.
                       </p>
 
                       <div className="max-w-md">
-                          <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Shortcut</label>
+                          <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary mb-2 uppercase tracking-wider">Shortcut</label>
                           <div 
                               className={clsx(
                                   "w-full h-14 flex items-center justify-center border-2 rounded-xl text-lg font-mono font-medium cursor-pointer transition-all select-none",
                                   recordingHotkey 
-                                      ? "border-blue-500 bg-blue-50 text-blue-600 shadow-[0_0_0_4px_rgba(59,130,246,0.1)]" 
-                                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white"
+                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.1)]" 
+                                      : "border-slate-200 dark:border-gpt-hover bg-slate-50 dark:bg-gpt-input text-slate-700 dark:text-gpt-text hover:border-slate-300 dark:hover:border-gpt-text hover:bg-white dark:hover:bg-gpt-hover"
                               )}
                               onClick={() => setRecordingHotkey(true)}
                               onKeyDown={handleHotkeyKeyDown}
@@ -484,10 +523,10 @@ export default function Options() {
                               ) : config.customHotkey ? (
                                   <div className="flex items-center gap-2">
                                       {config.customHotkey.modifiers.map(m => (
-                                          <kbd key={m} className="px-2 py-1 bg-white border border-slate-300 rounded-md text-sm shadow-sm uppercase">{m}</kbd>
+                                          <kbd key={m} className="px-2 py-1 bg-white dark:bg-gpt-sidebar border border-slate-300 dark:border-gpt-hover rounded-md text-sm shadow-sm uppercase">{m}</kbd>
                                       ))}
                                       <span className="text-slate-400">+</span>
-                                      <kbd className="px-2 py-1 bg-white border border-slate-300 rounded-md text-sm shadow-sm uppercase">{config.customHotkey.key}</kbd>
+                                      <kbd className="px-2 py-1 bg-white dark:bg-gpt-sidebar border border-slate-300 dark:border-gpt-hover rounded-md text-sm shadow-sm uppercase">{config.customHotkey.key}</kbd>
                                   </div>
                               ) : (
                                   <span className="text-slate-400 italic">Click to set (e.g. Ctrl+Shift+Y)</span>
@@ -500,7 +539,7 @@ export default function Options() {
                                           e.stopPropagation();
                                           saveConfig({ ...config, customHotkey: null });
                                       }}
-                                      className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                                      className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition-colors"
                                   >
                                       Clear Shortcut
                                   </button>
@@ -509,11 +548,11 @@ export default function Options() {
                       </div>
                   </div>
                   
-                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-xl p-4 flex gap-3">
                       <div className="text-amber-500 shrink-0 mt-0.5">
                           <Keyboard size={20} />
                       </div>
-                      <div className="text-sm text-amber-800">
+                      <div className="text-sm text-amber-800 dark:text-amber-300">
                           <p className="font-bold mb-1">Note regarding shortcuts</p>
                           <p className="leading-relaxed">
                               Browser-reserved shortcuts (like Ctrl+T, Ctrl+N) cannot be overridden. 

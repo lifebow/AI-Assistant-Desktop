@@ -29,7 +29,8 @@ const DEFAULT_CONFIG: AppConfig = {
     anthropic: 'claude-3-haiku-20240307',
     openrouter: 'google/gemini-2.0-flash-exp:free',
   },
-  customHotkey: null
+  customHotkey: null,
+  theme: 'system'
 };
 
 const getStorage = async (): Promise<AppConfig> => {

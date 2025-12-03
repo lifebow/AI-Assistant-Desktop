@@ -5,6 +5,7 @@ export interface PromptTemplate {
   name: string;
   content: string;
   immediate?: boolean;
+  onlyImage?: boolean;
 }
 
 export interface ChatMessage {
@@ -30,6 +31,7 @@ export interface AppConfig {
       key: string;
       modifiers: string[];
   } | null;
+  theme: 'system' | 'light' | 'dark';
 }
 
 export const DEFAULT_PROMPTS: PromptTemplate[] = [
@@ -60,5 +62,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     anthropic: 'claude-3-haiku-20240307',
     openrouter: 'google/gemini-2.0-flash-exp:free',
   },
-  customHotkey: null
+  customHotkey: null,
+  theme: 'system'
 };
