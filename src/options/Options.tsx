@@ -3,7 +3,7 @@ import { type AppConfig, DEFAULT_CONFIG, type Provider, type PromptTemplate } fr
 import { getStorage, setStorage } from '../lib/storage';
 import { fetchModels } from '../lib/api';
 import { useTheme } from '../lib/hooks';
-import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, ChevronDown, Keyboard } from 'lucide-react';
+import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, ChevronDown, Keyboard, Cpu } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const Providers: Provider[] = ['openai', 'google', 'anthropic', 'openrouter'];
@@ -18,13 +18,13 @@ const ProviderDisplayNames: Record<Provider, string> = {
 export default function Options() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'general' | 'prompts' | 'hotkeys'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'providers' | 'prompts' | 'hotkeys'>('general');
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [savedToast, setSavedToast] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [isCustomModel, setIsCustomModel] = useState<Record<string, boolean>>({});
-  const [recordingHotkey, setRecordingHotkey] = useState(false);
+  const [recordingTarget, setRecordingTarget] = useState<string | null>(null);
 
   useTheme(config);
 
@@ -112,7 +112,7 @@ export default function Options() {
 
   const handleHotkeyKeyDown = (e: React.KeyboardEvent) => {
       e.preventDefault();
-      if (!recordingHotkey) return;
+      if (!recordingTarget) return;
 
       const modifiers = [];
       if (e.ctrlKey) modifiers.push('ctrl');
@@ -126,8 +126,16 @@ export default function Options() {
       if (['control', 'alt', 'shift', 'meta'].includes(key)) return;
 
       const newHotkey = { key, modifiers };
-      saveConfig({ ...config, customHotkey: newHotkey });
-      setRecordingHotkey(false);
+
+      if (recordingTarget === 'global') {
+          saveConfig({ ...config, customHotkey: newHotkey });
+      } else {
+          const promptIndex = config.prompts.findIndex(p => p.id === recordingTarget);
+          if (promptIndex !== -1) {
+              handleUpdatePrompt(promptIndex, 'hotkey', newHotkey);
+          }
+      }
+      setRecordingTarget(null);
   };
 
   if (loading) return (
@@ -156,35 +164,46 @@ export default function Options() {
                 <button 
                     onClick={() => setActiveTab('general')}
                     className={clsx(
-                        "px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 flex items-center gap-2",
+                        "px-3 py-2 text-xs font-semibold rounded-md transition-all duration-200 flex items-center gap-1.5",
                         activeTab === 'general' 
                             ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
                             : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
                     )}
                 >
-                    <Settings2 size={16} /> General
+                    <Settings2 size={14} /> General
+                </button>
+                <button 
+                    onClick={() => setActiveTab('providers')}
+                    className={clsx(
+                        "px-3 py-2 text-xs font-semibold rounded-md transition-all duration-200 flex items-center gap-1.5",
+                        activeTab === 'providers' 
+                            ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
+                            : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
+                    )}
+                >
+                    <Cpu size={14} /> Providers
                 </button>
                 <button 
                     onClick={() => setActiveTab('prompts')}
                     className={clsx(
-                        "px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 flex items-center gap-2",
+                        "px-3 py-2 text-xs font-semibold rounded-md transition-all duration-200 flex items-center gap-1.5",
                         activeTab === 'prompts' 
                             ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
                             : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
                     )}
                 >
-                    <MessageSquareText size={16} /> Prompts
+                    <MessageSquareText size={14} /> Prompts
                 </button>
                 <button 
                     onClick={() => setActiveTab('hotkeys')}
                     className={clsx(
-                        "px-4 py-2 text-sm font-semibold rounded-md transition-all duration-200 flex items-center gap-2",
+                        "px-3 py-2 text-xs font-semibold rounded-md transition-all duration-200 flex items-center gap-1.5",
                         activeTab === 'hotkeys' 
                             ? "bg-white dark:bg-gpt-hover text-blue-600 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-gpt-hover" 
                             : "text-slate-500 dark:text-gpt-secondary hover:text-slate-700 dark:hover:text-gpt-text hover:bg-slate-200/50 dark:hover:bg-gpt-hover"
                     )}
                 >
-                    <Keyboard size={16} /> Hotkeys
+                    <Keyboard size={14} /> Hotkeys
                 </button>
             </div>
           </div>
@@ -226,33 +245,45 @@ export default function Options() {
                         </div>
                     </div>
                 </div>
+            </div>
+          )}
 
-                {/* Default Provider Card */}
-                <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-4 flex items-center gap-2">
-                        <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
-                        Default Provider
-                    </h3>
-                    <div className="max-w-md">
-                         <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Select Provider</label>
-                        <div className="relative">
-                            <select 
-                                value={config.selectedProvider}
-                                onChange={(e) => saveConfig({ ...config, selectedProvider: e.target.value as Provider })}
-                                className="w-full p-3 bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 dark:text-gpt-text appearance-none"
-                            >
-                                {Providers.map(p => <option key={p} value={p}>{ProviderDisplayNames[p]}</option>)}
-                            </select>
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                                <Settings2 size={16} />
+          {activeTab === 'providers' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                   {/* Default Provider Card */}
+                    <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-4 flex items-center gap-2">
+                            <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                            Default Provider
+                        </h3>
+                        <div className="max-w-md">
+                            <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Select Provider</label>
+                            <div className="relative">
+                                <select 
+                                    value={config.selectedProvider}
+                                    onChange={(e) => saveConfig({ ...config, selectedProvider: e.target.value as Provider })}
+                                    className="w-full p-3 bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 dark:text-gpt-text appearance-none"
+                                >
+                                    {Providers.map(p => <option key={p} value={p}>{ProviderDisplayNames[p]}</option>)}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                    <Settings2 size={16} />
+                                </div>
                             </div>
+                            <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2">This provider will be selected by default when you open the popup.</p>
                         </div>
-                        <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2">This provider will be selected by default when you open the popup.</p>
                     </div>
-                </div>
 
-                {/* API Configuration Grid */}
-                <div className="grid grid-cols-1 gap-6">
+                   <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 flex gap-3">
+                       <div className="text-blue-600 dark:text-blue-400 mt-0.5"><Cpu size={18} /></div>
+                       <div className="text-sm text-blue-900 dark:text-blue-300">
+                           <p className="font-semibold mb-1">Configure AI Providers</p>
+                           <p className="opacity-80">Add your API keys below. Keys are stored locally on your device.</p>
+                       </div>
+                   </div>
+
+                   {/* API Configuration Grid */}
+                   <div className="grid grid-cols-1 gap-6">
                     {Providers.map((provider) => (
                         <div key={provider} className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover overflow-hidden transition-all hover:shadow-md duration-300">
                             <div className="px-6 py-4 border-b border-slate-100 dark:border-gpt-hover bg-slate-50/50 dark:bg-gpt-hover/20 flex items-center justify-between">
@@ -393,8 +424,8 @@ export default function Options() {
                             </div>
                         </div>
                     ))}
-                </div>
-            </div>
+                   </div>
+              </div>
           )}
 
           {activeTab === 'prompts' && (
@@ -417,49 +448,94 @@ export default function Options() {
                         <div key={prompt.id} className="group bg-white dark:bg-gpt-sidebar border border-slate-200 dark:border-gpt-hover rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-300 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                             
-                            <div className="flex justify-between items-start gap-4 mb-4">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-bold text-slate-400 dark:text-gpt-secondary mb-1 uppercase tracking-wider">Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={prompt.name}
-                                        onChange={(e) => handleUpdatePrompt(idx, 'name', e.target.value)}
-                                        className="text-base font-bold text-slate-900 dark:text-gpt-text bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-gpt-hover focus:border-blue-500 outline-none px-0 py-1 transition-colors w-full"
-                                        placeholder="Prompt Name"
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2 pt-4">
-                                    <label className="flex items-center gap-2 cursor-pointer group/checkbox">
-                                        <div className="relative">
-                                            <input 
-                                                type="checkbox"
-                                                checked={!!prompt.onlyImage}
-                                                onChange={(e) => handleUpdatePrompt(idx, 'onlyImage', e.target.checked)}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-                                        </div>
-                                        <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Only Image</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer group/checkbox">
-                                        <div className="relative">
-                                            <input 
-                                                type="checkbox"
-                                                checked={!!prompt.immediate}
-                                                onChange={(e) => handleUpdatePrompt(idx, 'immediate', e.target.checked)}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                                        </div>
-                                        <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Instant Submit</span>
-                                    </label>
+                            <div className="flex flex-col gap-3 mb-4">
+                                <div className="flex justify-between items-start gap-4">
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-bold text-slate-400 dark:text-gpt-secondary mb-1 uppercase tracking-wider">Name</label>
+                                        <input 
+                                            type="text" 
+                                            value={prompt.name}
+                                            onChange={(e) => handleUpdatePrompt(idx, 'name', e.target.value)}
+                                            className="text-base font-bold text-slate-900 dark:text-gpt-text bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-gpt-hover focus:border-blue-500 outline-none px-0 py-1 transition-colors w-full"
+                                            placeholder="Prompt Name"
+                                        />
+                                    </div>
                                     <button 
                                         onClick={() => handleRemovePrompt(idx)}
-                                        className="text-slate-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 ml-2"
+                                        className="text-slate-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
                                         title="Delete Prompt"
                                     >
                                         <Trash2 size={18} />
                                     </button>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-6">
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex items-center gap-2 cursor-pointer group/checkbox">
+                                            <div className="relative">
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={!!prompt.onlyImage}
+                                                    onChange={(e) => handleUpdatePrompt(idx, 'onlyImage', e.target.checked)}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                                            </div>
+                                            <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Only Image</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer group/checkbox">
+                                            <div className="relative">
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={!!prompt.immediate}
+                                                    onChange={(e) => handleUpdatePrompt(idx, 'immediate', e.target.checked)}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                            </div>
+                                            <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Instant Submit</span>
+                                        </label>
+                                    </div>
+
+                                    {/* Prompt Hotkey Recorder */}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-400 dark:text-gpt-secondary uppercase tracking-wider">Hotkey:</span>
+                                        <div 
+                                            className={clsx(
+                                                "h-8 px-3 flex items-center justify-center border rounded-lg text-xs font-mono font-medium cursor-pointer transition-all select-none min-w-[100px]",
+                                                recordingTarget === prompt.id
+                                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/20" 
+                                                    : "border-slate-200 dark:border-gpt-hover bg-slate-50 dark:bg-gpt-input text-slate-700 dark:text-gpt-text hover:border-slate-300 dark:hover:border-gpt-text"
+                                            )}
+                                            onClick={() => setRecordingTarget(prompt.id)}
+                                            onKeyDown={handleHotkeyKeyDown}
+                                            tabIndex={0}
+                                            onBlur={() => setRecordingTarget(null)}
+                                            title="Click to record hotkey"
+                                        >
+                                            {recordingTarget === prompt.id ? (
+                                                <span className="animate-pulse">Press keys...</span>
+                                            ) : prompt.hotkey ? (
+                                                <div className="flex items-center gap-1">
+                                                    {prompt.hotkey.modifiers.map(m => (
+                                                        <span key={m} className="capitalize">{m}+</span>
+                                                    ))}
+                                                    <span className="capitalize">{prompt.hotkey.key}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-400 italic">None</span>
+                                            )}
+                                        </div>
+                                        {prompt.hotkey && (
+                                            <button 
+                                                onClick={() => handleUpdatePrompt(idx, 'hotkey', null)}
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                title="Clear hotkey"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             
@@ -509,16 +585,16 @@ export default function Options() {
                           <div 
                               className={clsx(
                                   "w-full h-14 flex items-center justify-center border-2 rounded-xl text-lg font-mono font-medium cursor-pointer transition-all select-none",
-                                  recordingHotkey 
+                                  recordingTarget === 'global'
                                       ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-[0_0_0_4px_rgba(59,130,246,0.1)]" 
                                       : "border-slate-200 dark:border-gpt-hover bg-slate-50 dark:bg-gpt-input text-slate-700 dark:text-gpt-text hover:border-slate-300 dark:hover:border-gpt-text hover:bg-white dark:hover:bg-gpt-hover"
                               )}
-                              onClick={() => setRecordingHotkey(true)}
+                              onClick={() => setRecordingTarget('global')}
                               onKeyDown={handleHotkeyKeyDown}
                               tabIndex={0}
-                              onBlur={() => setRecordingHotkey(false)}
+                              onBlur={() => setRecordingTarget(null)}
                           >
-                              {recordingHotkey ? (
+                              {recordingTarget === 'global' ? (
                                   <span className="animate-pulse">Press keys...</span>
                               ) : config.customHotkey ? (
                                   <div className="flex items-center gap-2">

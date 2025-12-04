@@ -6,6 +6,10 @@ export interface PromptTemplate {
   content: string;
   immediate?: boolean;
   onlyImage?: boolean;
+  hotkey?: {
+      key: string;
+      modifiers: string[];
+  } | null;
 }
 
 export interface ChatMessage {

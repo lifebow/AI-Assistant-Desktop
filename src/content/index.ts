@@ -58,49 +58,84 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 // Hotkey Listener
 window.addEventListener('keydown', (e) => {
-    if (!config || !config.customHotkey) return;
-
-    const { key, modifiers } = config.customHotkey;
+    if (!config) return;
     
-    // Normalizing key names
     const eventKey = e.key.toLowerCase();
-    const targetKey = key.toLowerCase();
-
-    const ctrl = modifiers.includes('ctrl') || modifiers.includes('control');
-    const alt = modifiers.includes('alt');
-    const shift = modifiers.includes('shift');
-    const meta = modifiers.includes('meta') || modifiers.includes('command');
-
     // Helper to ignore modifier keys themselves
     if (['control', 'alt', 'shift', 'meta'].includes(eventKey)) return;
 
-    // Debug log for key press if it matches the main key (to help debug modifier issues)
-    // if (eventKey === targetKey) {
-    //     console.log(`[AI Ask] Key match (${eventKey}). Modifiers required:`, modifiers, `Pressed: Ctrl=${e.ctrlKey}, Alt=${e.altKey}, Shift=${e.shiftKey}, Meta=${e.metaKey}`);
-    // }
+    // Check Global Hotkey
+    if (config.customHotkey) {
+        const { key, modifiers } = config.customHotkey;
+        const targetKey = key.toLowerCase();
 
-    if (
-        eventKey === targetKey &&
-        e.ctrlKey === ctrl &&
-        e.altKey === alt &&
-        e.shiftKey === shift &&
-        e.metaKey === meta
-    ) {
-        
-        // Get selection
-        const selection = window.getSelection()?.toString();
-        
-        // Use IIFE for async operation in event handler
-        (async () => {
-            try {
-                await chrome.runtime.sendMessage({
-                    action: 'open_popup_hotkey',
-                    selection: selection
-                });
-            } catch (err) {
-                console.error('[AI Assistant] Failed to send message:', err);
+        const ctrl = modifiers.includes('ctrl') || modifiers.includes('control');
+        const alt = modifiers.includes('alt');
+        const shift = modifiers.includes('shift');
+        const meta = modifiers.includes('meta') || modifiers.includes('command');
+
+        if (
+            eventKey === targetKey &&
+            e.ctrlKey === ctrl &&
+            e.altKey === alt &&
+            e.shiftKey === shift &&
+            e.metaKey === meta
+        ) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Get selection
+            const selection = window.getSelection()?.toString();
+            (async () => {
+                try {
+                    await chrome.runtime.sendMessage({
+                        action: 'open_popup_hotkey',
+                        selection: selection
+                    });
+                } catch (err) {
+                    console.error('[AI Assistant] Failed to send message:', err);
+                }
+            })();
+            return;
+        }
+    }
+
+    // Check Prompt Hotkeys
+    if (config.prompts) {
+        for (const prompt of config.prompts) {
+            if (!prompt.hotkey) continue;
+            
+            const { key, modifiers } = prompt.hotkey;
+            const targetKey = key.toLowerCase();
+
+            const ctrl = modifiers.includes('ctrl') || modifiers.includes('control');
+            const alt = modifiers.includes('alt');
+            const shift = modifiers.includes('shift');
+            const meta = modifiers.includes('meta') || modifiers.includes('command');
+
+            if (
+                eventKey === targetKey &&
+                e.ctrlKey === ctrl &&
+                e.altKey === alt &&
+                e.shiftKey === shift &&
+                e.metaKey === meta
+            ) {
+                e.preventDefault();
+                e.stopPropagation();
+                const selection = window.getSelection()?.toString();
+                (async () => {
+                    try {
+                        await chrome.runtime.sendMessage({
+                            action: 'execute_prompt_hotkey',
+                            selection: selection,
+                            promptId: prompt.id
+                        });
+                    } catch (err) {
+                        console.error('[AI Assistant] Failed to send message:', err);
+                    }
+                })();
+                return; 
             }
-        })();
+        }
     }
 });
 

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { type AppConfig, DEFAULT_CONFIG, type ChatMessage, type PromptTemplate } from '../lib/types';
-import { getStorage, getSelectedText } from '../lib/storage';
-import { callApi } from '../lib/api';
-import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon } from 'lucide-react';
+import { type AppConfig, DEFAULT_CONFIG, type ChatMessage, type PromptTemplate, type Provider } from '../lib/types';
+import { getStorage, getSelectedText, setStorage } from '../lib/storage';
+import { callApi, fetchModels } from '../lib/api';
+import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -17,8 +17,12 @@ export default function Popup() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [pendingAutoPrompt, setPendingAutoPrompt] = useState<PromptTemplate | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
 
   useTheme(config);
 
@@ -26,20 +30,84 @@ export default function Popup() {
     const init = async () => {
       const [cfg, text] = await Promise.all([getStorage(), getSelectedText()]);
       setConfig(cfg);
-      setSelectedText(text);
+      
+      let currentText = text;
        
-       const storage = await chrome.storage.local.get(['contextSelection', 'contextImage']);
+       const storage = await chrome.storage.local.get(['contextSelection', 'contextImage', 'autoExecutePromptId']);
        if (storage.contextSelection) {
-           setSelectedText(storage.contextSelection as string);
+           currentText = storage.contextSelection as string;
            await chrome.storage.local.remove('contextSelection');
        }
        if (storage.contextImage) {
            setSelectedImage(storage.contextImage as string);
            await chrome.storage.local.remove('contextImage');
        }
+       
+       setSelectedText(currentText);
+       
+       if (storage.autoExecutePromptId) {
+           const promptId = storage.autoExecutePromptId;
+           await chrome.storage.local.remove('autoExecutePromptId');
+           const prompt = cfg.prompts.find(p => p.id === promptId);
+           if (prompt) {
+               setPendingAutoPrompt(prompt);
+           }
+       }
     };
     init();
   }, []);
+
+  // Handle auto-execution once state is ready
+  useEffect(() => {
+      if (pendingAutoPrompt && config) {
+          // We need to wait for selectedText to be potentially populated?
+          // It is populated in the same tick as setPendingAutoPrompt in init.
+          // So in this render, selectedText should be ready.
+          setInstruction(pendingAutoPrompt.content);
+          
+          // We need to pass the prompt content directly because 'instruction' state might not update in time for handleSubmit if we called it immediately?
+          // No, setInstruction queues update. 
+          // We should call handleSubmit with the content.
+          
+          // We need to clear pending so it doesn't run again
+          const promptContent = pendingAutoPrompt.content;
+          setPendingAutoPrompt(null);
+          
+          // Use a small timeout to ensure state is settled or just pass params?
+          // Ideally handleSubmit should accept params.
+          // I'll modify handleSubmit to use the passed param if available.
+          // It already does: `overrideInstruction`.
+          // But it reads `selectedText` from state. 
+          // Since we are in an effect that runs *after* render, `selectedText` should be the updated value.
+          
+          handleSubmit(promptContent);
+      }
+  }, [pendingAutoPrompt, config, selectedText]); // Add selectedText dependency to ensure we have it
+
+
+  useEffect(() => {
+    const loadModels = async () => {
+        const models: Record<string, string[]> = {};
+        for (const provider of Object.keys(config.apiKeys) as Provider[]) {
+            if (config.apiKeys[provider] && config.apiKeys[provider].length > 0) {
+                try {
+                    // Use the first key to fetch models
+                    const fetched = await fetchModels(provider, config.apiKeys[provider][0], config.customBaseUrls[provider]);
+                    if (fetched.length > 0) {
+                        models[provider] = fetched;
+                    }
+                } catch (e) {
+                    console.error(`Failed to fetch models for ${provider}`, e);
+                }
+            }
+        }
+        setAvailableModels(prev => ({ ...prev, ...models }));
+    };
+    
+    if (Object.keys(config.apiKeys).some(k => config.apiKeys[k as Provider].length > 0)) {
+        loadModels();
+    }
+  }, [config.apiKeys, config.customBaseUrls]);
 
   useEffect(() => {
     scrollToBottom();
@@ -51,6 +119,16 @@ export default function Popup() {
           textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
       }
   }, [instruction]);
+
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
+              setIsModelMenuOpen(false);
+          }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,14 +145,25 @@ export default function Popup() {
       }
   };
 
+  const handleModelChange = async (provider: Provider, model: string) => {
+      const newConfig = {
+          ...config,
+          selectedProvider: provider,
+          selectedModel: {
+              ...config.selectedModel,
+              [provider]: model
+          }
+      };
+      setConfig(newConfig);
+      await setStorage(newConfig);
+      setIsModelMenuOpen(false);
+  };
+
   const handleSubmit = async (overrideInstruction?: string) => {
     const textToSubmit = overrideInstruction !== undefined ? overrideInstruction : instruction;
     
     if (!textToSubmit.trim()) return;
-    if (!selectedText && !selectedImage && messages.length === 0) {
-        setError("No context selected.");
-        return;
-    }
+    // Context validation removed
 
     setLoading(true);
     setError('');
@@ -135,17 +224,70 @@ export default function Popup() {
       chrome.runtime.openOptionsPage();
   };
 
+  // Group available models by provider
+  const allProviders = (Object.keys(config.apiKeys) as Provider[]).filter(p => config.apiKeys[p].length > 0);
+
   return (
     <div className="w-[450px] h-[600px] bg-slate-50 dark:bg-gpt-main flex flex-col font-sans text-slate-900 dark:text-gpt-text overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover shrink-0 z-20">
-        <div className="flex items-center gap-2.5">
-            <img src="/icons/icon32.png" alt="Logo" className="w-6 h-6" />
-            <h1 className="font-bold text-base tracking-tight text-slate-900 dark:text-gpt-text">AI Assistant</h1>
+      <div className="flex items-center justify-between px-5 py-3 bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover shrink-0 z-20 relative">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+            <img src="/icons/icon32.png" alt="Logo" className="w-6 h-6 shrink-0" />
+            
+             {/* Model Selector */}
+             <div className="relative flex-1 min-w-0" ref={modelMenuRef}>
+                <button
+                    onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                    className="w-full flex items-center justify-between gap-2 bg-transparent font-semibold text-sm text-slate-700 dark:text-gpt-text focus:outline-none cursor-pointer py-1 truncate hover:text-blue-600 dark:hover:text-white transition-colors"
+                >
+                    <span className="truncate">{config.selectedModel[config.selectedProvider] || 'Select Model'}</span>
+                    <ChevronDown size={14} className={clsx("shrink-0 transition-transform", isModelMenuOpen && "rotate-180")} />
+                </button>
+                
+                {/* Custom Dropdown Menu */}
+                {isModelMenuOpen && (
+                    <div className="absolute top-full left-0 w-[260px] max-h-[400px] overflow-y-auto bg-white dark:bg-gpt-sidebar border border-slate-200 dark:border-gpt-hover rounded-xl shadow-xl z-50 mt-2 py-2 custom-scrollbar">
+                        {allProviders.length === 0 && (
+                            <div className="px-4 py-3 text-xs text-slate-500 text-center">
+                                No API keys configured.<br/>Click settings to add keys.
+                            </div>
+                        )}
+                        {allProviders.map(p => {
+                            const models = availableModels[p] || [config.selectedModel[p]];
+                            const uniqueModels = Array.from(new Set([...models, config.selectedModel[p]]));
+                            return (
+                                <div key={p} className="mb-2 last:mb-0">
+                                    <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-gpt-secondary uppercase tracking-wider">
+                                        {p}
+                                    </div>
+                                    {uniqueModels.map(m => {
+                                        const isSelected = config.selectedProvider === p && config.selectedModel[p] === m;
+                                        return (
+                                            <button
+                                                key={`${p}:${m}`}
+                                                onClick={() => handleModelChange(p, m)}
+                                                className={clsx(
+                                                    "w-full text-left px-4 py-2 text-sm flex items-center justify-between group transition-colors",
+                                                    isSelected 
+                                                        ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" 
+                                                        : "text-slate-700 dark:text-gpt-text hover:bg-slate-50 dark:hover:bg-gpt-hover"
+                                                )}
+                                            >
+                                                <span className="truncate">{m}</span>
+                                                {isSelected && <Check size={14} />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
         <button 
             onClick={openOptions} 
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-gpt-hover p-2 rounded-lg transition-all duration-200"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-gpt-hover p-2 rounded-lg transition-all duration-200 ml-2 shrink-0"
             title="Settings"
         >
             <Settings size={18} />
@@ -267,30 +409,30 @@ export default function Popup() {
             </div>
          )}
 
-         <div className="relative flex items-end gap-2">
-            <div className="relative flex-1">
-                <textarea
-                    ref={textareaRef}
-                    value={instruction}
-                    onChange={(e) => setInstruction(e.target.value)}
-                    placeholder={messages.length === 0 ? "What should I do with the selected text?" : "Reply to continue chat..."}
-                    className="w-full pl-4 pr-4 py-3 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-transparent focus:border-blue-500 dark:focus:border-gpt-secondary outline-none resize-none max-h-[200px] min-h-[44px] overflow-y-auto no-scrollbar transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-500 text-slate-900 dark:text-gpt-text"
-                    rows={1}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSubmit();
-                        }
-                    }}
-                />
+         <div className="relative bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-2xl px-3 py-3 focus-within:ring-2 focus-within:ring-blue-500/20 dark:focus-within:ring-transparent focus-within:border-blue-500 dark:focus-within:border-gpt-secondary transition-all">
+            <textarea
+                ref={textareaRef}
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder={messages.length === 0 ? (selectedText ? "What should I do with the selected text?" : "Type a message...") : "Reply to continue chat..."}
+                className="w-full bg-transparent border-none focus:ring-0 p-0 pr-10 text-sm text-slate-900 dark:text-gpt-text placeholder:text-slate-400 dark:placeholder:text-zinc-500 resize-none max-h-[200px] min-h-[44px] overflow-y-auto no-scrollbar outline-none"
+                rows={1}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSubmit();
+                    }
+                }}
+            />
+            <div className="absolute bottom-2 right-2">
+                <button
+                    onClick={() => handleSubmit()}
+                    disabled={loading || !instruction.trim()}
+                    className="w-8 h-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-lg shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 flex items-center justify-center"
+                >
+                    <Send size={14} />
+                </button>
             </div>
-            <button
-                onClick={() => handleSubmit()}
-                disabled={loading || !instruction.trim()}
-                className="shrink-0 w-11 h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 flex items-center justify-center"
-            >
-                <Send size={18} />
-            </button>
          </div>
       </div>
     </div>

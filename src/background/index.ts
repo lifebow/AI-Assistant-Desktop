@@ -94,5 +94,13 @@ chrome.runtime.onMessage.addListener((message) => {
         } else {
             openUi();
         }
+    } else if (message.action === 'execute_prompt_hotkey') {
+        const data: any = { autoExecutePromptId: message.promptId };
+        if (message.selection) {
+            data.contextSelection = message.selection;
+        }
+        chrome.storage.local.set(data).then(() => {
+            openUi();
+        });
     }
 });
