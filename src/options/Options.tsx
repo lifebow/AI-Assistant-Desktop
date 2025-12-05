@@ -3,7 +3,7 @@ import { type AppConfig, DEFAULT_CONFIG, type Provider, type PromptTemplate } fr
 import { getStorage, setStorage } from '../lib/storage';
 import { fetchModels } from '../lib/api';
 import { useTheme } from '../lib/hooks';
-import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X } from 'lucide-react';
+import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X, Download, Upload } from 'lucide-react';
 import { SearchableSelect } from './SearchableSelect';
 import { clsx } from 'clsx';
 
@@ -188,6 +188,57 @@ export default function Options() {
         setRecordingTarget(null);
     };
 
+    const handleExport = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "ai-assistant-settings.json");
+        document.body.appendChild(downloadAnchorNode); // required for firefox
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    };
+
+    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const content = e.target?.result as string;
+                const importedConfig = JSON.parse(content);
+
+                // Basic validation
+                if (typeof importedConfig === 'object' && importedConfig !== null) {
+                    // Start with default config to ensure all fields exist, then overwrite with imported data
+                    // This handles cases where the imported config might be from an older version
+                    const newConfig: AppConfig = {
+                        ...DEFAULT_CONFIG,
+                        ...importedConfig,
+                        // Ensure nested objects are merged correctly if they are missing in import or partial
+                        apiKeys: { ...DEFAULT_CONFIG.apiKeys, ...(importedConfig.apiKeys || {}) },
+                        customBaseUrls: { ...DEFAULT_CONFIG.customBaseUrls, ...(importedConfig.customBaseUrls || {}) },
+                        selectedModel: { ...DEFAULT_CONFIG.selectedModel, ...(importedConfig.selectedModel || {}) },
+                        prompts: importedConfig.prompts || DEFAULT_CONFIG.prompts,
+                        // Ensure arrays
+                        customProviders: importedConfig.customProviders || [],
+                    };
+
+                    saveConfig(newConfig);
+                    alert('Settings imported successfully!');
+                } else {
+                    throw new Error('Invalid settings file format');
+                }
+            } catch (error) {
+                console.error('Import failed:', error);
+                alert('Failed to import settings. valid JSON file?');
+            }
+        };
+        reader.readAsText(file);
+        // Reset input so same file can be selected again if needed
+        event.target.value = '';
+    };
+
     if (loading) return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-gpt-main text-slate-500 dark:text-gpt-secondary">
             <div className="flex flex-col items-center gap-3">
@@ -256,6 +307,8 @@ export default function Options() {
                             <Keyboard size={14} /> Hotkeys
                         </button>
                     </div>
+
+
                 </div>
             </div>
 
@@ -294,6 +347,35 @@ export default function Options() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                            <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-4 flex items-center gap-2">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                Backup & Restore
+                            </h3>
+                            <div className="flex flex-wrap gap-4">
+                                <button
+                                    onClick={handleExport}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 dark:bg-gpt-input hover:bg-slate-100 dark:hover:bg-gpt-hover text-slate-700 dark:text-gpt-text font-medium text-sm rounded-xl border border-slate-200 dark:border-gpt-hover transition-all"
+                                >
+                                    <Download size={16} className="text-blue-600 dark:text-blue-400" />
+                                    Export Settings
+                                </button>
+                                <label className="cursor-pointer flex items-center gap-2 px-4 py-2.5 bg-slate-50 dark:bg-gpt-input hover:bg-slate-100 dark:hover:bg-gpt-hover text-slate-700 dark:text-gpt-text font-medium text-sm rounded-xl border border-slate-200 dark:border-gpt-hover transition-all">
+                                    <Upload size={16} className="text-blue-600 dark:text-blue-400" />
+                                    Import Settings
+                                    <input
+                                        type="file"
+                                        className="hidden"
+                                        accept=".json"
+                                        onChange={handleImport}
+                                    />
+                                </label>
+                            </div>
+                            <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-3">
+                                Export your configuration to a JSON file or restore from a previous backup.
+                            </p>
                         </div>
                     </div>
                 )}
