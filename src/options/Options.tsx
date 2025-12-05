@@ -3,7 +3,8 @@ import { type AppConfig, DEFAULT_CONFIG, type Provider, type PromptTemplate } fr
 import { getStorage, setStorage } from '../lib/storage';
 import { fetchModels } from '../lib/api';
 import { useTheme } from '../lib/hooks';
-import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, ChevronDown, Keyboard, Cpu, X } from 'lucide-react';
+import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X } from 'lucide-react';
+import { SearchableSelect } from './SearchableSelect';
 import { clsx } from 'clsx';
 
 const Providers: Provider[] = ['openai', 'google', 'anthropic', 'openrouter'];
@@ -420,31 +421,16 @@ export default function Options() {
                                                 </div>
                                                 <div className="relative">
                                                     {fetchedModels[provider]?.length > 0 && !isCustomModel[provider] ? (
-                                                        <div className="relative">
-                                                            <select
-                                                                value={fetchedModels[provider].includes(config.selectedModel[provider]) ? config.selectedModel[provider] : '___custom___'}
-                                                                onChange={(e) => {
-                                                                    if (e.target.value === '___custom___') {
-                                                                        setIsCustomModel(prev => ({ ...prev, [provider]: true }));
-                                                                    } else {
-                                                                        saveConfig({
-                                                                            ...config,
-                                                                            selectedModel: { ...config.selectedModel, [provider]: e.target.value }
-                                                                        })
-                                                                    }
-                                                                }}
-                                                                className="w-full px-3 py-2.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none pr-8 text-slate-700 dark:text-gpt-text font-medium"
-                                                            >
-                                                                {!fetchedModels[provider].includes(config.selectedModel[provider]) && config.selectedModel[provider] && (
-                                                                    <option value={config.selectedModel[provider]}>{config.selectedModel[provider]}</option>
-                                                                )}
-                                                                {fetchedModels[provider].map(m => (
-                                                                    <option key={m} value={m}>{m}</option>
-                                                                ))}
-                                                                <option value="___custom___">Type custom ID...</option>
-                                                            </select>
-                                                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                                        </div>
+                                                        <SearchableSelect
+                                                            value={config.selectedModel[provider]}
+                                                            options={fetchedModels[provider]}
+                                                            onChange={(value) => saveConfig({
+                                                                ...config,
+                                                                selectedModel: { ...config.selectedModel, [provider]: value }
+                                                            })}
+                                                            onCustomClick={() => setIsCustomModel(prev => ({ ...prev, [provider]: true }))}
+                                                            placeholder="Select a model..."
+                                                        />
                                                     ) : (
                                                         <div className="relative">
                                                             <input
