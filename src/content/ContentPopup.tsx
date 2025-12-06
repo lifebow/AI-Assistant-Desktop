@@ -76,10 +76,25 @@ export const openContentPopup = (
                 if (yAbove > 0) {
                     y = yAbove;
                 } else {
-                    // Fits neither below nor above well -> Fallback to Center
-                    // Reset to center values calculated initially
-                    x = (window.innerWidth - width) / 2;
-                    y = (window.innerHeight - height) / 2;
+                    // Try placement to the Right
+                    const xRight = rect.right + 10;
+                    if (xRight + width <= window.innerWidth - 10) {
+                        x = xRight;
+                        // Align top with selection top, but clamp to viewport
+                        y = rect.top;
+                        const padding = 10;
+                        if (y + height > window.innerHeight - padding) {
+                            y = window.innerHeight - height - padding;
+                        }
+                        if (y < padding) {
+                            y = padding;
+                        }
+                    } else {
+                        // Fits neither below nor above nor right -> Fallback to Center
+                        // Reset to center values calculated initially
+                        x = (window.innerWidth - width) / 2;
+                        y = (window.innerHeight - height) / 2;
+                    }
                 }
             }
 
@@ -122,6 +137,43 @@ const AppWrapper = ({ config, initialSelection, initialImage, initialInstruction
     const [size, setSize] = useState(config.popupSize || { width: 450, height: 600 });
     const isDragging = useRef(false);
     const dragOffset = useRef({ x: 0, y: 0 });
+
+    const [hydrated, setHydrated] = useState(false);
+    const [chatState, setChatState] = useState({
+        text: initialSelection,
+        image: initialImage,
+        instruction: initialInstruction,
+        messages: [] as any[]
+    });
+
+    useEffect(() => {
+        const loadState = async () => {
+            // Check for explicit new context - if present, start fresh
+            if (initialSelection || initialImage) {
+                setHydrated(true);
+                return;
+            }
+
+            // Try restore from storage
+            try {
+                const storage = await chrome.storage.local.get('popupState');
+                if (storage.popupState) {
+                    const s = storage.popupState as any;
+                    setChatState({
+                        text: s.selectedText || '',
+                        image: s.selectedImage || null,
+                        instruction: initialInstruction || s.instruction || '',
+                        messages: s.messages || []
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to restore state', e);
+            } finally {
+                setHydrated(true);
+            }
+        };
+        loadState();
+    }, []);
 
     // Theme logic
     const isDark = useTheme(config.theme);
@@ -195,6 +247,8 @@ const AppWrapper = ({ config, initialSelection, initialImage, initialInstruction
         chrome.storage.local.set({ popupState: stateToSave });
     };
 
+    if (!hydrated) return null;
+
     return (
         <div
             className={`font-sans text-base ${isDark ? 'dark' : ''}`}
@@ -237,9 +291,10 @@ const AppWrapper = ({ config, initialSelection, initialImage, initialInstruction
                 <div className="w-full h-full flex flex-col active:shadow-none transition-shadow bg-white dark:bg-slate-900 rounded-xl overflow-hidden border-2 border-slate-300 dark:border-slate-500 shadow-sm">
                     <ChatInterface
                         config={config}
-                        initialText={initialSelection}
-                        initialImage={initialImage}
-                        initialInstruction={initialInstruction}
+                        initialText={chatState.text}
+                        initialImage={chatState.image}
+                        initialInstruction={chatState.instruction}
+                        initialMessages={chatState.messages}
                         pendingAutoPrompt={pendingAutoPrompt}
                         onConfigUpdate={(newCfg: AppConfig) => setStorage(newCfg)}
                         onStateChange={handleStateChange}

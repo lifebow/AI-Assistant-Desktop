@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { type AppConfig, type ChatMessage, type PromptTemplate, type Provider } from '../lib/types';
 import { callApi, fetchModels } from '../lib/api';
-import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, Check, X } from 'lucide-react';
+import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, Check, X, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -46,6 +46,7 @@ export default function ChatInterface({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+    const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -395,12 +396,12 @@ export default function ChatInterface({
                         <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${msg.role === 'user' ? 'bg-slate-200 dark:bg-gpt-hover text-slate-500 dark:text-gpt-text' : 'bg-blue-600 text-white'}`}>
                             {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                         </div>
-                        <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm dark:shadow-none ${msg.role === 'user'
+                        <div className={`relative group max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm dark:shadow-none ${msg.role === 'user'
                             ? 'bg-white dark:bg-gpt-input text-slate-800 dark:text-gpt-text border border-slate-200 dark:border-gpt-hover rounded-tr-none'
                             : 'bg-white dark:bg-transparent text-slate-800 dark:text-gpt-text border border-slate-200 dark:border-none rounded-tl-none px-0 py-0'
                             }`}>
                             {msg.role === 'assistant' ? (
-                                <div className={clsx("prose prose-sm max-w-none prose-slate dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-100 dark:prose-pre:bg-gpt-sidebar prose-pre:p-2 prose-pre:rounded-lg",
+                                <div className={clsx("prose prose-sm max-w-none prose-slate dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-100 dark:prose-pre:bg-gpt-sidebar prose-pre:p-2 prose-pre:rounded-lg mb-4",
                                     "dark:px-0 dark:py-0 px-1"
                                 )}>
                                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
@@ -408,8 +409,23 @@ export default function ChatInterface({
                                     </ReactMarkdown>
                                 </div>
                             ) : (
-                                <div className="whitespace-pre-wrap">{msg.content}</div>
+                                <div className="whitespace-pre-wrap mb-2">{msg.content}</div>
                             )}
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(msg.content);
+                                    setCopiedIndex(idx);
+                                    setTimeout(() => setCopiedIndex(null), 2000);
+                                }}
+                                className={clsx(
+                                    "absolute bottom-1 right-1 p-1 rounded-md transition-all duration-200",
+                                    "opacity-0 group-hover:opacity-100 focus:opacity-100",
+                                    "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                )}
+                                title="Copy"
+                            >
+                                {copiedIndex === idx ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -489,7 +505,7 @@ export default function ChatInterface({
                         <button
                             onClick={() => handleSubmit()}
                             disabled={loading || !instruction.trim()}
-                            className="w-8 h-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-lg shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 flex items-center justify-center"
+                            className="w-8 h-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-lg shadow-md hover:shadow-lg disabled:opacity-100 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 flex items-center justify-center"
                         >
                             <Send size={14} />
                         </button>
