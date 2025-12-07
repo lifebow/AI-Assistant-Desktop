@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { type AppConfig, type ChatMessage, type PromptTemplate, type Provider } from '../lib/types';
 import { callApi, fetchModels } from '../lib/api';
-import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, Check, X, Copy } from 'lucide-react';
+import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, Check, X, Copy, PauseCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -53,6 +53,50 @@ export default function ChatInterface({
     const modelMenuRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [modelSearch, setModelSearch] = useState('');
+
+    // Abort controller for streaming
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Refs for cleanup state access
+    const messagesRef = useRef(messages);
+    const loadingRef = useRef(loading);
+    const instructionRef = useRef(instruction);
+    const selectedTextRef = useRef(selectedText);
+    const selectedImageRef = useRef(selectedImage);
+
+    // Sync refs
+    useEffect(() => { messagesRef.current = messages; }, [messages]);
+    useEffect(() => { loadingRef.current = loading; }, [loading]);
+    useEffect(() => { instructionRef.current = instruction; }, [instruction]);
+    useEffect(() => { selectedTextRef.current = selectedText; }, [selectedText]);
+    useEffect(() => { selectedImageRef.current = selectedImage; }, [selectedImage]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (loadingRef.current && abortControllerRef.current) {
+                console.log('Aborting stream due to unmount');
+                abortControllerRef.current.abort();
+
+                // Mark last message as interrupted
+                const currentMsgs = [...messagesRef.current];
+                const lastMsg = currentMsgs[currentMsgs.length - 1];
+                if (lastMsg && lastMsg.role === 'assistant') {
+                    lastMsg.interrupted = true;
+                }
+
+                // Force save state
+                if (onStateChange) {
+                    onStateChange({
+                        instruction: instructionRef.current,
+                        messages: currentMsgs,
+                        selectedText: selectedTextRef.current,
+                        selectedImage: selectedImageRef.current
+                    });
+                }
+            }
+        };
+    }, []);
 
     // Notify state changes
     useEffect(() => {
@@ -192,6 +236,12 @@ export default function ChatInterface({
         setLoading(true);
         setError('');
 
+        // Abort previous if any
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
         let userContent = textToSubmit.trim();
         let messagePayload: ChatMessage;
 
@@ -223,17 +273,44 @@ export default function ChatInterface({
             textareaRef.current.style.height = 'auto';
         }
 
+        // Add placeholder assistant message
+        const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
+        setMessages([...newMessages, assistantMsg]);
+        let accumulatedText = '';
+
         try {
-            const res = await callApi(newMessages, config);
+            const res = await callApi(newMessages, config, (chunk) => {
+                accumulatedText += chunk;
+                setMessages(prev => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last && last.role === 'assistant') {
+                        last.content = accumulatedText;
+                    }
+                    return updated;
+                });
+            }, abortControllerRef.current.signal);
+
             if (res.error) {
                 setError(res.error);
-            } else {
-                setMessages([...newMessages, { role: 'assistant', content: res.text }]);
             }
         } catch (err: any) {
-            setError(err.message);
+            if (err.name === 'AbortError') {
+                // Aborted
+                setMessages(prev => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last && last.role === 'assistant') {
+                        last.interrupted = true;
+                    }
+                    return updated;
+                });
+            } else {
+                setError(err.message);
+            }
         } finally {
             setLoading(false);
+            abortControllerRef.current = null;
         }
     };
 
@@ -404,9 +481,22 @@ export default function ChatInterface({
                                 <div className={clsx("prose prose-sm max-w-none prose-slate dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-100 dark:prose-pre:bg-gpt-sidebar prose-pre:p-2 prose-pre:rounded-lg mb-4",
                                     "dark:px-0 dark:py-0 px-1"
                                 )}>
-                                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                                        {msg.content}
-                                    </ReactMarkdown>
+                                    {!msg.content && loading && idx === messages.length - 1 ? (
+                                        <div className="flex items-center gap-2 text-slate-500 dark:text-gpt-secondary py-1">
+                                            <Loader2 size={14} className="animate-spin" />
+                                            <span className="text-xs font-medium">Thinking...</span>
+                                        </div>
+                                    ) : (
+                                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    )}
+                                    {msg.interrupted && (
+                                        <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-400 dark:text-slate-500 italic border-t border-slate-100 dark:border-slate-800 pt-2">
+                                            <PauseCircle size={12} />
+                                            <span>Stream interrupted</span>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="whitespace-pre-wrap mb-2">{msg.content}</div>
@@ -429,18 +519,6 @@ export default function ChatInterface({
                         </div>
                     </div>
                 ))}
-
-                {loading && (
-                    <div className="flex gap-3">
-                        <div className="shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                            <Bot size={14} />
-                        </div>
-                        <div className="bg-white dark:bg-transparent border border-slate-200 dark:border-none p-3 dark:p-0 rounded-2xl rounded-tl-none shadow-sm dark:shadow-none flex items-center gap-2">
-                            <Loader2 size={14} className="animate-spin text-blue-600 dark:text-gpt-secondary" />
-                            <span className="text-xs text-slate-500 dark:text-gpt-secondary font-medium">Thinking...</span>
-                        </div>
-                    </div>
-                )}
 
                 {error && (
                     <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs p-3 rounded-lg border border-red-100 dark:border-red-800 text-center">

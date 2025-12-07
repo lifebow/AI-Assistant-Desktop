@@ -22,6 +22,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   image?: string; // Data URL
+  interrupted?: boolean;
 }
 
 export interface ApiConfig {

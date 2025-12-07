@@ -103,7 +103,45 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
 });
 
-import { executeApiCall, executeFetchModels } from '../lib/api';
+import { executeApiCall, executeFetchModels, executeApiStream } from '../lib/api';
+
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === 'stream_api') {
+        const controller = new AbortController();
+
+        port.onDisconnect.addListener(() => {
+            controller.abort();
+        });
+
+        port.onMessage.addListener(async (msg) => {
+            if (msg.messages && msg.config) {
+                try {
+                    const res = await executeApiStream(msg.messages, msg.config, (chunk) => {
+                        port.postMessage({ chunk });
+                    }, controller.signal);
+
+                    if (res.error) {
+                        // Check if still connected before posting?
+                        // Abort might have happened.
+                        try {
+                            port.postMessage({ error: res.error });
+                        } catch (e) { /* ignore */ }
+                    } else {
+                        try {
+                            port.postMessage({ done: true });
+                        } catch (e) { /* ignore */ }
+                    }
+                } catch (e: any) {
+                    if (e.name === 'AbortError') return; // Ignore aborts
+                    try {
+                        port.postMessage({ error: e.message });
+                        port.postMessage({ done: true });
+                    } catch (err) { /* ignore */ }
+                }
+            }
+        });
+    }
+});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.action === 'open_popup_hotkey') {
