@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/bump-version.js && tsc -b && vite build && vite build -c vite.content.config.ts",
+    "build:ci": "tsc -b && vite build && vite build -c vite.content.config.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
