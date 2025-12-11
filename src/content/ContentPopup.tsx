@@ -22,6 +22,11 @@ export const closeContentPopup = (): void => {
         shadowContainer.remove();
         shadowContainer = null;
     }
+    // Restore focus to the page so hotkeys work again
+    // Use setTimeout to ensure the DOM cleanup is complete first
+    setTimeout(() => {
+        document.documentElement.focus();
+    }, 0);
 };
 
 export const openContentPopup = (
@@ -131,6 +136,11 @@ export const openContentPopup = (
             shadowContainer.remove();
             shadowContainer = null;
         }
+        // Restore focus to the page so hotkeys work again
+        // Use setTimeout to ensure the DOM cleanup is complete first
+        setTimeout(() => {
+            document.documentElement.focus();
+        }, 0);
     };
 
     root.render(
@@ -280,8 +290,11 @@ const AppWrapper = ({ config, initialSelection, initialImage, initialInstruction
                     zIndex: 9999,
                     backgroundColor: 'transparent'
                 }}
-                onClick={(e) => {
+                onMouseDown={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
+                    // Dispatch a click on document.body to restore focus context
+                    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                     onClose();
                 }}
             />

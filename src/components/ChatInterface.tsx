@@ -336,26 +336,17 @@ export default function ChatInterface({
         try {
             const res = await callApi(newMessages, config, (chunk) => {
                 accumulatedText += chunk;
+                const currentResponseTime = Date.now() - startTime;
                 setMessages(prev => {
                     const updated = [...prev];
                     const last = updated[updated.length - 1];
                     if (last && last.role === 'assistant') {
                         last.content = accumulatedText;
+                        last.responseTime = currentResponseTime; // Update on every chunk
                     }
                     return updated;
                 });
             }, abortControllerRef.current.signal);
-
-            // Set response time on completion
-            const responseTime = Date.now() - startTime;
-            setMessages(prev => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last && last.role === 'assistant') {
-                    last.responseTime = responseTime;
-                }
-                return updated;
-            });
 
             if (res.error) {
                 setError(res.error);
@@ -604,7 +595,7 @@ export default function ChatInterface({
                                             <span>Stream interrupted</span>
                                         </div>
                                     )}
-                                    {msg.responseTime !== undefined && !loading && (
+                                    {msg.responseTime !== undefined && (
                                         <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400 dark:text-slate-500">
                                             <Clock size={10} />
                                             <span>{(msg.responseTime / 1000).toFixed(1)}s</span>
