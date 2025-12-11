@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Check, ChevronDown, Search, PlusCircle } from 'lucide-react';
+import { Check, ChevronDown, Search, PlusCircle, X } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface SearchableSelectProps {
@@ -29,7 +29,10 @@ export function SearchableSelect({ value, options, onChange, onCustomClick, plac
 
     useEffect(() => {
         if (isOpen && inputRef.current) {
+            // Pre-fill with current value
+            setSearch(value || '');
             inputRef.current.focus();
+            inputRef.current.select();
         } else {
             setSearch('');
         }
@@ -62,16 +65,40 @@ export function SearchableSelect({ value, options, onChange, onCustomClick, plac
                                 placeholder="Search..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="w-full pl-8 pr-3 py-1.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-md focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 text-slate-700 dark:text-gpt-text"
+                                className="w-full pl-8 pr-8 py-1.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-md focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 text-slate-700 dark:text-gpt-text"
                                 onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => {
+                                    e.stopPropagation();
+                                    if (e.key === 'Enter' && search.trim() && filteredOptions.length === 0) {
+                                        // Use search term as custom model
+                                        onChange(search.trim());
+                                        setIsOpen(false);
+                                    }
+                                }}
                             />
+                            {search && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSearch('');
+                                        inputRef.current?.focus();
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                                    title="Clear search"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
                     <div className="overflow-y-auto flex-1 p-1">
                         {filteredOptions.length === 0 ? (
-                            <div className="px-3 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
-                                No matching models found.
+                            <div className="px-3 py-8 text-center">
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">No matching models found.</p>
+                                {search.trim() && (
+                                    <p className="text-xs text-blue-500 dark:text-blue-400">Press Enter to use "<span className="font-medium">{search.trim()}</span>" as custom model</p>
+                                )}
                             </div>
                         ) : (
                             filteredOptions.map((option) => (

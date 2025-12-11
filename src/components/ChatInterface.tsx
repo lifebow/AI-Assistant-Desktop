@@ -138,8 +138,9 @@ export default function ChatInterface({
     useEffect(() => {
         if (pendingAutoPrompt) {
             // Use initialText (fresh selection) not selectedText (may have stale data)
+            // Check both initialImage and selectedImage for image context (pasted images)
             // Also don't auto-submit if there's an existing conversation
-            const hasFreshContext = !!initialText || !!initialImage;
+            const hasFreshContext = !!initialText || !!initialImage || !!selectedImage;
             const hasExistingConversation = initialMessages && initialMessages.length > 0;
 
             if (pendingAutoPrompt.immediate && hasFreshContext && !hasExistingConversation) {
@@ -205,7 +206,12 @@ export default function ChatInterface({
 
     useEffect(() => {
         if (isModelMenuOpen) {
-            setTimeout(() => searchInputRef.current?.focus(), 50);
+            // Pre-fill with current model name
+            setModelSearch(config.selectedModel[config.selectedProvider] || '');
+            setTimeout(() => {
+                searchInputRef.current?.focus();
+                searchInputRef.current?.select();
+            }, 50);
         } else {
             setModelSearch('');
         }
@@ -240,10 +246,41 @@ export default function ChatInterface({
         }
     };
 
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const dataUrl = event.target?.result as string;
+                        setSelectedImage(dataUrl);
+                        if (onStateChange) {
+                            onStateChange({
+                                instruction,
+                                messages,
+                                selectedText,
+                                selectedImage: dataUrl
+                            });
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+                break;
+            }
+        }
+    };
+
     const handlePromptClick = (prompt: PromptTemplate) => {
         // Use initialText (fresh selection) not selectedText (may have stale data)
+        // Check both initialImage and selectedImage for image context (pasted images)
         // Also don't auto-submit if there's an existing conversation
-        const hasFreshContext = !!initialText || !!initialImage;
+        const hasFreshContext = !!initialText || !!initialImage || !!selectedImage;
         const hasExistingConversation = messages.length > 0;
 
         if (prompt.immediate && hasFreshContext && !hasExistingConversation) {
@@ -431,16 +468,37 @@ export default function ChatInterface({
                                 onMouseDown={e => e.stopPropagation()}
                             >
                                 <div className="p-2 sticky top-0 bg-white dark:bg-gpt-sidebar z-10 border-b border-slate-100 dark:border-gpt-hover">
-                                    <input
-                                        ref={searchInputRef}
-                                        type="text"
-                                        value={modelSearch}
-                                        onChange={(e) => setModelSearch(e.target.value)}
-                                        placeholder="Search models..."
-                                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 text-slate-900 dark:text-gpt-text placeholder:text-slate-400 transition-colors"
-                                        onClick={(e) => e.stopPropagation()}
-                                        onKeyDown={(e) => e.stopPropagation()}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            ref={searchInputRef}
+                                            type="text"
+                                            value={modelSearch}
+                                            onChange={(e) => setModelSearch(e.target.value)}
+                                            placeholder="Search models..."
+                                            className="w-full px-3 py-2 pr-8 text-xs bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 text-slate-900 dark:text-gpt-text placeholder:text-slate-400 transition-colors"
+                                            onClick={(e) => e.stopPropagation()}
+                                            onKeyDown={(e) => {
+                                                e.stopPropagation();
+                                                if (e.key === 'Enter' && modelSearch.trim() && filteredModelGroups.length === 0 && allProviders.length > 0) {
+                                                    // Use search term as custom model for current provider
+                                                    handleModelChange(config.selectedProvider as Provider, modelSearch.trim());
+                                                }
+                                            }}
+                                        />
+                                        {modelSearch && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setModelSearch('');
+                                                    searchInputRef.current?.focus();
+                                                }}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                                                title="Clear search"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="py-2 overflow-y-auto">
@@ -451,7 +509,10 @@ export default function ChatInterface({
                                     )}
                                     {allProviders.length > 0 && filteredModelGroups.length === 0 && (
                                         <div className="px-4 py-8 text-center">
-                                            <p className="text-xs text-slate-500 dark:text-gpt-secondary">No models found</p>
+                                            <p className="text-xs text-slate-500 dark:text-gpt-secondary mb-2">No models found</p>
+                                            {modelSearch.trim() && (
+                                                <p className="text-xs text-blue-500 dark:text-blue-400">Press Enter to use "<span className="font-medium">{modelSearch.trim()}</span>" as custom model</p>
+                                            )}
                                         </div>
                                     )}
                                     {filteredModelGroups.map(group => (
@@ -682,6 +743,7 @@ export default function ChatInterface({
                                 handleSubmit();
                             }
                         }}
+                        onPaste={handlePaste}
                     />
                     <div className="absolute bottom-2 right-2">
                         <button
