@@ -157,9 +157,10 @@ export const openContentPopup = (
     );
 };
 
-const AppWrapper = ({ config, initialSelection, initialImage, initialInstruction, pendingAutoPrompt, onClose, initialX, initialY }: any) => {
+const AppWrapper = ({ config: initialConfig, initialSelection, initialImage, initialInstruction, pendingAutoPrompt, onClose, initialX, initialY }: any) => {
     const [pos, setPos] = useState({ x: initialX, y: initialY });
-    const [size, setSize] = useState(config.popupSize || { width: 450, height: 600 });
+    const [size, setSize] = useState(initialConfig.popupSize || { width: 450, height: 600 });
+    const [config, setConfig] = useState<AppConfig>(initialConfig);
     const isDragging = useRef(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
@@ -324,7 +325,10 @@ const AppWrapper = ({ config, initialSelection, initialImage, initialInstruction
                         initialInstruction={chatState.instruction}
                         initialMessages={chatState.messages}
                         pendingAutoPrompt={pendingAutoPrompt}
-                        onConfigUpdate={(newCfg: AppConfig) => setStorage(newCfg)}
+                        onConfigUpdate={(newCfg: AppConfig) => {
+                            setConfig(newCfg);
+                            setStorage(newCfg);
+                        }}
                         onStateChange={handleStateChange}
                         hideSettings={true}
                     />

@@ -8,13 +8,14 @@ import { SearchableSelect } from './SearchableSelect';
 import { clsx } from 'clsx';
 
 
-const Providers: Provider[] = ['openai', 'google', 'anthropic', 'openrouter'];
+const Providers: Provider[] = ['openai', 'google', 'anthropic', 'openrouter', 'perplexity'];
 
 const ProviderDisplayNames: Record<Provider, string> = {
     openai: 'OpenAI',
     google: 'Google Gemini',
     anthropic: 'Anthropic',
-    openrouter: 'OpenRouter'
+    openrouter: 'OpenRouter',
+    perplexity: 'Perplexity (Web Search)'
 };
 
 export default function Options() {
@@ -376,6 +377,38 @@ export default function Options() {
                                 <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2">
                                     "In-Page JS Popup" renders within the page, allowing resizing and better interaction with page content.
                                 </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                            <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-4 flex items-center gap-2">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                Web Search
+                            </h3>
+                            <div className="max-w-md">
+                                <label className="flex items-center justify-between cursor-pointer group">
+                                    <div>
+                                        <span className="text-sm font-medium text-slate-700 dark:text-gpt-text group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Enable Web Search Tool</span>
+                                        <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-1">
+                                            Allow AI models to search the web via Perplexity when they need current information.
+                                        </p>
+                                    </div>
+                                    <div className="relative ml-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.enableWebSearch !== false}
+                                            onChange={(e) => saveConfig({ ...config, enableWebSearch: e.target.checked })}
+                                            className="sr-only peer"
+                                            disabled={!config.apiKeys['perplexity']?.length}
+                                        />
+                                        <div className={`w-11 h-6 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${!config.apiKeys['perplexity']?.length ? 'opacity-50' : ''}`}></div>
+                                    </div>
+                                </label>
+                                {!config.apiKeys['perplexity']?.length && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 flex items-center gap-1.5">
+                                        ⚠️ Add a Perplexity API key in the Providers tab to enable web search.
+                                    </p>
+                                )}
                             </div>
                         </div>
 

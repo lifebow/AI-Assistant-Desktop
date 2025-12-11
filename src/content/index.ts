@@ -17,6 +17,7 @@ const DEFAULT_CONFIG: AppConfig = {
         google: [],
         anthropic: [],
         openrouter: [],
+        perplexity: [],
     },
     selectedProvider: 'google',
     customBaseUrls: {
@@ -24,6 +25,7 @@ const DEFAULT_CONFIG: AppConfig = {
         google: 'https://generativelanguage.googleapis.com/v1beta',
         anthropic: 'https://api.anthropic.com/v1',
         openrouter: 'https://openrouter.ai/api/v1',
+        perplexity: 'https://api.perplexity.ai',
     },
     prompts: DEFAULT_PROMPTS,
     selectedModel: {
@@ -31,6 +33,7 @@ const DEFAULT_CONFIG: AppConfig = {
         google: 'gemini-1.5-flash',
         anthropic: 'claude-3-haiku-20240307',
         openrouter: 'google/gemini-2.0-flash-exp:free',
+        perplexity: 'sonar-pro',
     },
     customProviders: [],
     customHotkey: null,
@@ -42,7 +45,18 @@ const DEFAULT_CONFIG: AppConfig = {
 
 const getStorage = async (): Promise<AppConfig> => {
     const result = await chrome.storage.sync.get('appConfig');
-    return result.appConfig ? { ...DEFAULT_CONFIG, ...result.appConfig } : DEFAULT_CONFIG;
+    if (!result.appConfig) return DEFAULT_CONFIG;
+
+    const stored = result.appConfig as Partial<AppConfig>;
+
+    // Deep merge for nested objects
+    return {
+        ...DEFAULT_CONFIG,
+        ...stored,
+        apiKeys: { ...DEFAULT_CONFIG.apiKeys, ...stored.apiKeys },
+        customBaseUrls: { ...DEFAULT_CONFIG.customBaseUrls, ...stored.customBaseUrls },
+        selectedModel: { ...DEFAULT_CONFIG.selectedModel, ...stored.selectedModel },
+    };
 };
 
 let config: AppConfig | null = null;
@@ -66,14 +80,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message) => {
     if (message.action === 'open_content_popup') {
-        if (config) {
-            openContentPopup(config, message.selection || '', message.image || null);
-        } else {
-            getStorage().then(cfg => {
-                config = cfg;
-                openContentPopup(cfg, message.selection || '', message.image || null);
-            });
-        }
+        // Always load fresh config to get latest model selection
+        getStorage().then(freshConfig => {
+            config = freshConfig;
+            openContentPopup(freshConfig, message.selection || '', message.image || null);
+        });
     }
 });
 
@@ -109,14 +120,18 @@ window.addEventListener('keydown', (e) => {
             startCropMode(
                 (imageDataUrl: string) => {
                     // Crop completed, open popup with image
-                    if (config!.popupMode === 'content_script') {
-                        openContentPopup(config!, '', imageDataUrl);
-                    } else {
-                        chrome.runtime.sendMessage({
-                            action: 'open_with_image',
-                            image: imageDataUrl
-                        });
-                    }
+                    // Always load fresh config
+                    getStorage().then(freshConfig => {
+                        config = freshConfig;
+                        if (freshConfig.popupMode === 'content_script') {
+                            openContentPopup(freshConfig, '', imageDataUrl);
+                        } else {
+                            chrome.runtime.sendMessage({
+                                action: 'open_with_image',
+                                image: imageDataUrl
+                            });
+                        }
+                    });
                 },
                 () => {
                     // Crop canceled
@@ -152,7 +167,11 @@ window.addEventListener('keydown', (e) => {
                     closeContentPopup();
                 } else {
                     const selection = window.getSelection()?.toString() || '';
-                    openContentPopup(config, selection, null);
+                    // Always load fresh config from storage to get latest model selection
+                    getStorage().then(freshConfig => {
+                        config = freshConfig;
+                        openContentPopup(freshConfig, selection, null);
+                    });
                 }
             } else {
                 (async () => {

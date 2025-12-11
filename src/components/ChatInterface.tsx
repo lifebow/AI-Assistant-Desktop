@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { type AppConfig, type ChatMessage, type PromptTemplate, type Provider } from '../lib/types';
 import { callApi, fetchModels } from '../lib/api';
-import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, Check, X, Copy, PauseCircle, SquarePen, Clock } from 'lucide-react';
+import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, ChevronRight, Check, X, Copy, PauseCircle, SquarePen, Clock, Globe, Link2, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { clsx } from 'clsx';
 import { setStorage } from '../lib/storage';
+
+const ProviderDisplayNames: Record<string, string> = {
+    openai: 'OpenAI',
+    google: 'Google Gemini',
+    anthropic: 'Anthropic',
+    openrouter: 'OpenRouter',
+    perplexity: 'Perplexity'
+};
 
 interface ChatInterfaceProps {
     config: AppConfig;
@@ -48,6 +56,8 @@ export default function ChatInterface({
     const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
     const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+    const [expandedSearches, setExpandedSearches] = useState<Record<number, boolean>>({});
+    const [sourcesModal, setSourcesModal] = useState<{ sources: Array<{ title: string; url: string; snippet?: string }>; query: string } | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const modelMenuRef = useRef<HTMLDivElement>(null);
@@ -379,11 +389,26 @@ export default function ChatInterface({
                     const last = updated[updated.length - 1];
                     if (last && last.role === 'assistant') {
                         last.content = accumulatedText;
-                        last.responseTime = currentResponseTime; // Update on every chunk
+                        last.responseTime = currentResponseTime;
                     }
                     return updated;
                 });
-            }, abortControllerRef.current.signal);
+            }, abortControllerRef.current.signal, (searchStatus) => {
+                // Update message with web search information
+                setMessages(prev => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last && last.role === 'assistant') {
+                        last.webSearch = {
+                            query: searchStatus.query,
+                            result: searchStatus.result || '',
+                            isSearching: searchStatus.isSearching,
+                            sources: searchStatus.sources
+                        };
+                    }
+                    return updated;
+                });
+            });
 
             if (res.error) {
                 setError(res.error);
@@ -452,7 +477,7 @@ export default function ChatInterface({
                                     {(() => {
                                         const p = config.selectedProvider;
                                         const custom = config.customProviders?.find(cp => cp.id === p);
-                                        return custom ? custom.name : p;
+                                        return custom ? custom.name : (ProviderDisplayNames[p] || p);
                                     })()}
                                 </span>
                                 <span className="text-sm font-semibold text-slate-900 dark:text-gray-100 truncate w-full text-left group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -520,7 +545,7 @@ export default function ChatInterface({
                                             <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-gpt-secondary uppercase tracking-wider">
                                                 {(() => {
                                                     const custom = config.customProviders?.find(cp => cp.id === group.provider);
-                                                    return custom ? custom.name : group.provider;
+                                                    return custom ? custom.name : (ProviderDisplayNames[group.provider] || group.provider);
                                                 })()}
                                             </div>
                                             {group.models.map(m => {
@@ -640,7 +665,39 @@ export default function ChatInterface({
                                 <div className={clsx("prose prose-sm max-w-none prose-slate dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-100 dark:prose-pre:bg-gpt-sidebar prose-pre:p-2 prose-pre:rounded-lg mb-4",
                                     "dark:px-0 dark:py-0 px-1"
                                 )}>
-                                    {!msg.content && loading && idx === messages.length - 1 ? (
+                                    {/* Web Search Section */}
+                                    {msg.webSearch && (
+                                        <div className="mb-3 not-prose">
+                                            {msg.webSearch.isSearching ? (
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                    <Globe size={14} className="animate-pulse" />
+                                                    <span className="text-xs font-medium">Searching: "{msg.webSearch.query}"...</span>
+                                                    <Loader2 size={12} className="animate-spin ml-auto" />
+                                                </div>
+                                            ) : (
+                                                <div className="border border-slate-200 dark:border-gpt-hover rounded-lg overflow-hidden">
+                                                    <button
+                                                        onClick={() => setExpandedSearches(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-gpt-sidebar hover:bg-slate-100 dark:hover:bg-gpt-hover transition-colors text-left"
+                                                    >
+                                                        <Globe size={14} className="text-green-500 shrink-0" />
+                                                        <span className="text-xs font-medium text-slate-700 dark:text-gpt-text flex-1 truncate">
+                                                            Web search: "{msg.webSearch.query}"
+                                                        </span>
+                                                        <ChevronRight size={14} className={clsx("text-slate-400 transition-transform", expandedSearches[idx] && "rotate-90")} />
+                                                    </button>
+                                                    {expandedSearches[idx] && (
+                                                        <div className="px-3 py-2 bg-white dark:bg-gpt-main border-t border-slate-200 dark:border-gpt-hover max-h-48 overflow-y-auto custom-scrollbar">
+                                                            <div className="text-xs text-slate-600 dark:text-gpt-secondary whitespace-pre-wrap">
+                                                                {msg.webSearch.result}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {!msg.content && loading && idx === messages.length - 1 && !msg.webSearch?.isSearching ? (
                                         <div className="flex items-center gap-2 text-slate-500 dark:text-gpt-secondary py-1">
                                             <Loader2 size={14} className="animate-spin" />
                                             <span className="text-xs font-medium">Thinking...</span>
@@ -661,6 +718,16 @@ export default function ChatInterface({
                                             <Clock size={10} />
                                             <span>{(msg.responseTime / 1000).toFixed(1)}s</span>
                                         </div>
+                                    )}
+                                    {/* Sources Button */}
+                                    {msg.webSearch?.sources && msg.webSearch.sources.length > 0 && (
+                                        <button
+                                            onClick={() => setSourcesModal({ sources: msg.webSearch!.sources!, query: msg.webSearch!.query })}
+                                            className="flex items-center gap-1.5 mt-2 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors border border-blue-200 dark:border-blue-800"
+                                        >
+                                            <Link2 size={12} />
+                                            <span>{msg.webSearch.sources.length} Sources</span>
+                                        </button>
                                     )}
                                 </div>
                             ) : (
@@ -756,6 +823,69 @@ export default function ChatInterface({
                     </div>
                 </div>
             </div>
+
+            {/* Sources Modal */}
+            {sourcesModal && (
+                <div
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+                    onClick={() => setSourcesModal(null)}
+                >
+                    <div
+                        className="bg-white dark:bg-gpt-sidebar rounded-xl shadow-2xl max-w-md w-full mx-4 max-h-[70vh] flex flex-col overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-gpt-hover">
+                            <div className="flex items-center gap-2">
+                                <Link2 size={16} className="text-blue-500" />
+                                <span className="font-semibold text-slate-800 dark:text-gpt-text">Sources</span>
+                            </div>
+                            <button
+                                onClick={() => setSourcesModal(null)}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-gpt-hover rounded-lg transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Citations Label */}
+                        <div className="px-4 py-2 bg-slate-50 dark:bg-gpt-main border-b border-slate-200 dark:border-gpt-hover">
+                            <span className="text-xs font-semibold text-slate-500 dark:text-gpt-secondary uppercase tracking-wide">Citations</span>
+                        </div>
+
+                        {/* Sources List */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            {sourcesModal.sources.map((source, idx) => (
+                                <a
+                                    key={idx}
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-gpt-hover transition-colors border-b border-slate-100 dark:border-gpt-hover last:border-b-0 group"
+                                >
+                                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                                        <Globe size={12} className="text-blue-500" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-slate-800 dark:text-gpt-text group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                                            {source.title || `Source ${idx + 1}`}
+                                        </div>
+                                        <div className="text-xs text-slate-500 dark:text-gpt-secondary truncate mt-0.5">
+                                            {source.url}
+                                        </div>
+                                        {source.snippet && (
+                                            <div className="text-xs text-slate-600 dark:text-gpt-secondary mt-1 line-clamp-2">
+                                                {source.snippet}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <ExternalLink size={14} className="text-slate-400 group-hover:text-blue-500 transition-colors shrink-0 mt-1" />
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

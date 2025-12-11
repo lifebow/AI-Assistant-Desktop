@@ -116,9 +116,20 @@ chrome.runtime.onConnect.addListener((port) => {
         port.onMessage.addListener(async (msg) => {
             if (msg.messages && msg.config) {
                 try {
-                    const res = await executeApiStream(msg.messages, msg.config, (chunk) => {
-                        port.postMessage({ chunk });
-                    }, controller.signal);
+                    const res = await executeApiStream(
+                        msg.messages,
+                        msg.config,
+                        (chunk) => {
+                            port.postMessage({ chunk });
+                        },
+                        controller.signal,
+                        (webSearch) => {
+                            // Send web search status to content script
+                            try {
+                                port.postMessage({ webSearch });
+                            } catch (e) { /* ignore if disconnected */ }
+                        }
+                    );
 
                     if (res.error) {
                         // Check if still connected before posting?

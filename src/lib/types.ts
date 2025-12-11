@@ -24,6 +24,16 @@ export interface ChatMessage {
   image?: string; // Data URL
   interrupted?: boolean;
   responseTime?: number; // Response time in milliseconds
+  webSearch?: {
+    query: string;
+    result: string;
+    isSearching?: boolean;
+    sources?: Array<{
+      title: string;
+      url: string;
+      snippet?: string;
+    }>;
+  };
 }
 
 export interface ApiConfig {
@@ -51,6 +61,7 @@ export interface AppConfig {
   theme: 'system' | 'light' | 'dark';
   popupMode?: 'extension' | 'content_script';
   popupSize?: { width: number; height: number };
+  enableWebSearch?: boolean; // Enable web search tool via Perplexity
 }
 
 export const DEFAULT_PROMPTS: PromptTemplate[] = [
@@ -66,6 +77,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     google: [],
     anthropic: [],
     openrouter: [],
+    perplexity: [],
   },
   selectedProvider: 'google',
   customBaseUrls: {
@@ -73,6 +85,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     google: 'https://generativelanguage.googleapis.com/v1beta',
     anthropic: 'https://api.anthropic.com/v1',
     openrouter: 'https://openrouter.ai/api/v1',
+    perplexity: 'https://api.perplexity.ai',
   },
   prompts: DEFAULT_PROMPTS,
   selectedModel: {
@@ -80,6 +93,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     google: 'gemini-1.5-flash',
     anthropic: 'claude-3-haiku-20240307',
     openrouter: 'google/gemini-2.0-flash-exp:free',
+    perplexity: 'sonar-pro',
   },
   customProviders: [],
   customHotkey: null,

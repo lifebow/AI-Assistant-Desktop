@@ -5,6 +5,206 @@ interface ApiResponse {
   error?: string;
 }
 
+// Web Search Tool Definition (OpenAI format)
+const WEB_SEARCH_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'web_search',
+    description: 'Search the web for current information. Use this when you need up-to-date information, recent news, current events, or facts you are unsure about.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query to look up on the web'
+        }
+      },
+      required: ['query']
+    }
+  }
+};
+
+// Execute web search using Perplexity
+interface WebSearchResult {
+  content: string;
+  sources: Array<{ title: string; url: string; snippet?: string }>;
+}
+
+const executeWebSearch = async (query: string, config: AppConfig): Promise<WebSearchResult> => {
+  const perplexityKeys = config.apiKeys['perplexity'];
+  if (!perplexityKeys || perplexityKeys.length === 0) {
+    return { content: 'Error: No Perplexity API key configured for web search.', sources: [] };
+  }
+
+  const apiKey = perplexityKeys[Math.floor(Math.random() * perplexityKeys.length)];
+  const baseUrl = config.customBaseUrls['perplexity'] || 'https://api.perplexity.ai';
+  const model = 'sonar-pro'; // Use sonar-pro for comprehensive web search
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: 'system', content: 'You are a web search assistant. Provide concise, factual answers based on current web information. Include relevant sources when possible.' },
+          { role: 'user', content: query }
+        ],
+        web_search_options: {
+          search_type: 'pro'
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      return { content: `Search error: ${err.error?.message || response.statusText}`, sources: [] };
+    }
+
+    const data = await response.json();
+
+    const content = data.choices?.[0]?.message?.content || 'No search results found.';
+
+    // Extract citations from Perplexity response
+    // Perplexity can return citations in different places
+    const sources: Array<{ title: string; url: string; snippet?: string }> = [];
+
+    // Try root level citations
+    const citations = data.citations || data.search_results || [];
+
+    if (Array.isArray(citations)) {
+      citations.forEach((item: any, index: number) => {
+        if (typeof item === 'string') {
+          // Simple URL string
+          sources.push({
+            title: `Source ${index + 1}`,
+            url: item
+          });
+        } else if (item && typeof item === 'object') {
+          // Object with url/title
+          sources.push({
+            title: item.title || item.name || `Source ${index + 1}`,
+            url: item.url || item.link || '',
+            snippet: item.snippet || item.description
+          });
+        }
+      });
+    }
+
+
+    return { content, sources };
+  } catch (e: any) {
+    return { content: `Search failed: ${e.message}`, sources: [] };
+  }
+};
+
+// Check if web search should be enabled for this request
+const shouldEnableWebSearch = (config: AppConfig): boolean => {
+  // Web search is enabled if:
+  // 1. User has enableWebSearch turned on (or undefined, default to true if perplexity key exists)
+  // 2. Perplexity API key is configured
+  // 3. Current provider is NOT perplexity (no need for tool when using perplexity directly)
+  const hasPerplexityKey = config.apiKeys['perplexity']?.length > 0;
+  const webSearchEnabled = config.enableWebSearch !== false; // Default to true
+  const notUsingPerplexity = config.selectedProvider !== 'perplexity';
+
+  return hasPerplexityKey && webSearchEnabled && notUsingPerplexity;
+};
+
+// API Key Quota Management
+interface ExhaustedKeyEntry {
+  key: string;
+  provider: string;
+  exhaustedAt: number;
+  expiresAt: number; // First day of next month
+}
+
+const EXHAUSTED_KEYS_STORAGE_KEY = 'exhaustedApiKeys';
+
+// Get first day of next month (when quotas reset)
+const getNextMonthReset = (): number => {
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return nextMonth.getTime();
+};
+
+// Get exhausted keys from storage
+const getExhaustedKeys = async (): Promise<ExhaustedKeyEntry[]> => {
+  try {
+    const result = await chrome.storage.local.get(EXHAUSTED_KEYS_STORAGE_KEY) as Record<string, ExhaustedKeyEntry[]>;
+    const entries: ExhaustedKeyEntry[] = result[EXHAUSTED_KEYS_STORAGE_KEY] || [];
+    // Filter out expired entries (past their reset date)
+    const now = Date.now();
+    return entries.filter(e => e.expiresAt > now);
+  } catch {
+    return [];
+  }
+};
+
+// Mark a key as exhausted
+const markKeyExhausted = async (key: string, provider: string): Promise<void> => {
+  try {
+    const entries = await getExhaustedKeys();
+    // Check if already marked
+    if (entries.some(e => e.key === key && e.provider === provider)) {
+      return;
+    }
+    entries.push({
+      key,
+      provider,
+      exhaustedAt: Date.now(),
+      expiresAt: getNextMonthReset()
+    });
+    await chrome.storage.local.set({ [EXHAUSTED_KEYS_STORAGE_KEY]: entries });
+    console.log(`API key marked as exhausted for ${provider}, will reset on next month`);
+  } catch (e) {
+    console.error('Failed to mark key as exhausted:', e);
+  }
+};
+
+// Get available (non-exhausted) keys for a provider
+const getAvailableKeys = async (allKeys: string[], provider: string): Promise<string[]> => {
+  const exhaustedEntries = await getExhaustedKeys();
+  const exhaustedForProvider = new Set(
+    exhaustedEntries.filter(e => e.provider === provider).map(e => e.key)
+  );
+  return allKeys.filter(k => !exhaustedForProvider.has(k));
+};
+
+// Check if error indicates quota exhaustion
+const isQuotaError = (error: string): boolean => {
+  const quotaPatterns = [
+    'quota',
+    'rate limit',
+    'rate_limit',
+    'too many requests',
+    'exceeded',
+    'insufficient_quota',
+    'billing',
+    'credits',
+    '429',
+    'resource_exhausted'
+  ];
+  const lowerError = error.toLowerCase();
+  return quotaPatterns.some(p => lowerError.includes(p));
+};
+
+// Select a random available key
+const selectRandomKey = async (allKeys: string[], provider: string): Promise<{ key: string; available: string[] } | null> => {
+  const available = await getAvailableKeys(allKeys, provider);
+  if (available.length === 0) {
+    // All keys exhausted, try using any key anyway (maybe quotas reset)
+    if (allKeys.length > 0) {
+      return { key: allKeys[Math.floor(Math.random() * allKeys.length)], available: [] };
+    }
+    return null;
+  }
+  return { key: available[Math.floor(Math.random() * available.length)], available };
+};
+
 export const executeApiCall = async (
   messages: ChatMessage[],
   config: AppConfig
@@ -16,27 +216,51 @@ export const executeApiCall = async (
     return { text: '', error: `No API key found for ${provider}` };
   }
 
-  // Randomly select an API key
-  const apiKey = apiKeys[Math.floor(Math.random() * apiKeys.length)];
+  // Select a random available API key (avoiding exhausted ones)
+  const keySelection = await selectRandomKey(apiKeys, provider);
+  if (!keySelection) {
+    return { text: '', error: `No available API keys for ${provider}. All keys may have exhausted quota.` };
+  }
+
+  const apiKey = keySelection.key;
   const baseUrl = config.customBaseUrls[provider] || getDefaultBaseUrl(provider);
   const model = config.selectedModel[provider];
 
   try {
+    let result: ApiResponse;
     switch (provider) {
       case 'google':
-        return await callGoogle(apiKey, baseUrl, model, messages);
+        result = await callGoogle(apiKey, baseUrl, model, messages);
+        break;
       case 'openai':
-        return await callOpenAI(apiKey, baseUrl, model, messages);
+        result = await callOpenAI(apiKey, baseUrl, model, messages);
+        break;
       case 'anthropic':
-        return await callAnthropic(apiKey, baseUrl, model, messages);
+        result = await callAnthropic(apiKey, baseUrl, model, messages);
+        break;
       case 'openrouter':
-        return await callOpenRouter(apiKey, baseUrl, model, messages);
+        result = await callOpenRouter(apiKey, baseUrl, model, messages);
+        break;
+      case 'perplexity':
+        result = await callPerplexity(apiKey, baseUrl, model, messages);
+        break;
       default:
-        // Assume custom providers are OpenAI compatible
-        return await callOpenAI(apiKey, baseUrl, model, messages);
+        result = await callOpenAI(apiKey, baseUrl, model, messages);
     }
+
+    // Check if response indicates quota exhaustion
+    if (result.error && isQuotaError(result.error)) {
+      await markKeyExhausted(apiKey, provider);
+    }
+
+    return result;
   } catch (e: any) {
-    return { text: '', error: e.message || 'API call failed' };
+    const errorMsg = e.message || 'API call failed';
+    // Check if error indicates quota exhaustion
+    if (isQuotaError(errorMsg)) {
+      await markKeyExhausted(apiKey, provider);
+    }
+    return { text: '', error: errorMsg };
   }
 };
 
@@ -44,7 +268,8 @@ export const executeApiStream = async (
   messages: ChatMessage[],
   config: AppConfig,
   onChunk: (text: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }> }) => void
 ): Promise<ApiResponse> => {
   const provider = config.selectedProvider;
   const apiKeys = config.apiKeys[provider];
@@ -53,25 +278,50 @@ export const executeApiStream = async (
     return { text: '', error: `No API key found for ${provider}` };
   }
 
-  const apiKey = apiKeys[Math.floor(Math.random() * apiKeys.length)];
+  // Select a random available API key (avoiding exhausted ones)
+  const keySelection = await selectRandomKey(apiKeys, provider);
+  if (!keySelection) {
+    return { text: '', error: `No available API keys for ${provider}. All keys may have exhausted quota.` };
+  }
+
+  const apiKey = keySelection.key;
   const baseUrl = config.customBaseUrls[provider] || getDefaultBaseUrl(provider);
   const model = config.selectedModel[provider];
 
   try {
+    let result: ApiResponse;
     switch (provider) {
       case 'google':
-        return await streamGoogle(apiKey, baseUrl, model, messages, onChunk, signal);
+        result = await streamGoogle(apiKey, baseUrl, model, messages, onChunk, signal);
+        break;
       case 'openai':
       case 'openrouter':
-        return await streamOpenAI(apiKey, baseUrl, model, messages, onChunk, provider === 'openrouter', signal);
+        result = await streamOpenAI(apiKey, baseUrl, model, messages, onChunk, provider === 'openrouter', signal, config, onWebSearch);
+        break;
       case 'anthropic':
-        return await streamAnthropic(apiKey, baseUrl, model, messages, onChunk, signal);
+        result = await streamAnthropic(apiKey, baseUrl, model, messages, onChunk, signal, config);
+        break;
+      case 'perplexity':
+        result = await streamPerplexity(apiKey, baseUrl, model, messages, onChunk, signal);
+        break;
       default:
-        return await streamOpenAI(apiKey, baseUrl, model, messages, onChunk, false, signal);
+        result = await streamOpenAI(apiKey, baseUrl, model, messages, onChunk, false, signal, config, onWebSearch);
     }
+
+    // Check if response indicates quota exhaustion
+    if (result.error && isQuotaError(result.error)) {
+      await markKeyExhausted(apiKey, provider);
+    }
+
+    return result;
   } catch (e: any) {
     if (e.name === 'AbortError') throw e;
-    return { text: '', error: e.message || 'Stream failed' };
+    const errorMsg = e.message || 'Stream failed';
+    // Check if error indicates quota exhaustion
+    if (isQuotaError(errorMsg)) {
+      await markKeyExhausted(apiKey, provider);
+    }
+    return { text: '', error: errorMsg };
   }
 };
 
@@ -79,7 +329,8 @@ export const callApi = async (
   messages: ChatMessage[],
   config: AppConfig,
   onChunk?: (text: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }> }) => void
 ): Promise<ApiResponse> => {
   // Check context
   if (window.location.protocol.startsWith('http')) {
@@ -106,6 +357,9 @@ export const callApi = async (
           } else if (msg.chunk) {
             fullText += msg.chunk;
             onChunk(msg.chunk);
+          } else if (msg.webSearch && onWebSearch) {
+            // Handle web search status from background
+            onWebSearch(msg.webSearch);
           }
         });
 
@@ -120,7 +374,7 @@ export const callApi = async (
   } else {
     // Extension Context -> Direct Call
     if (onChunk) {
-      return executeApiStream(messages, config, onChunk, signal);
+      return executeApiStream(messages, config, onChunk, signal, onWebSearch);
     } else {
       return executeApiCall(messages, config);
     }
@@ -142,6 +396,14 @@ export const executeFetchModels = async (
       return (data.models || [])
         .map((m: any) => m.name.replace('models/', ''))
         .sort();
+    } else if (provider === 'perplexity') {
+      // Perplexity doesn't have a /models endpoint, return known models
+      return [
+        'sonar-pro',
+        'sonar',
+        'sonar-reasoning-pro',
+        'sonar-reasoning'
+      ];
     } else {
       // OpenAI compatible (OpenAI, OpenRouter, Custom)
       // Always send API key if available
@@ -184,6 +446,7 @@ const getDefaultBaseUrl = (provider: string) => {
     case 'google': return 'https://generativelanguage.googleapis.com/v1beta';
     case 'anthropic': return 'https://api.anthropic.com/v1';
     case 'openrouter': return 'https://openrouter.ai/api/v1';
+    case 'perplexity': return 'https://api.perplexity.ai';
     default: return '';
   }
 }
@@ -349,6 +612,47 @@ const callOpenRouter = async (apiKey: string, baseUrl: string, model: string, me
   return { text: data.choices?.[0]?.message?.content || '' };
 }
 
+// Perplexity API (OpenAI compatible with web search capabilities)
+const callPerplexity = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[]): Promise<ApiResponse> => {
+  const url = `${baseUrl}/chat/completions`;
+
+  const msgs = messages.map(m => {
+    if (m.image) {
+      return {
+        role: m.role,
+        content: [
+          { type: "text", text: m.content },
+          { type: "image_url", image_url: { url: m.image } }
+        ]
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: msgs,
+      web_search_options: {
+        search_type: 'pro'
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error?.message || response.statusText);
+  }
+
+  const data = await response.json();
+  return { text: data.choices?.[0]?.message?.content || '' };
+}
+
 // Streaming Implementations
 
 const readStream = async (response: Response, onChunk: (text: string) => void, parser: (chunk: string) => string | null) => {
@@ -393,7 +697,7 @@ const readStream = async (response: Response, onChunk: (text: string) => void, p
   }
 };
 
-const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, isOpenRouter = false, signal?: AbortSignal): Promise<ApiResponse> => {
+const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, isOpenRouter = false, signal?: AbortSignal, config?: AppConfig, onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }> }) => void): Promise<ApiResponse> => {
   const url = `${baseUrl}/chat/completions`;
 
   const msgs = messages.map(m => {
@@ -415,23 +719,53 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
   };
 
   if (isOpenRouter) {
-    headers['HTTP-Referer'] = 'https://github.com/your/repo'; // Should probably be configurable or fixed to something real
+    headers['HTTP-Referer'] = 'https://github.com/your/repo';
     headers['X-Title'] = 'AI Ask Extension';
+  }
+
+  // Build request body
+  // Add current date/time context for time-sensitive queries
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentDateTime = now.toLocaleString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  });
+
+  const dateContext = `IMPORTANT: Today's date is ${currentDateTime}. When searching for current/recent information, include the current date context (e.g., "${now.toLocaleString('en-US', { month: 'long', year: 'numeric' })}" or "${currentYear}") in your search queries to get up-to-date results. Do not search for outdated information from previous years.`;
+
+  // Prepend system message with current time if not already present
+  const msgsWithTime = msgs[0]?.role === 'system'
+    ? [{ ...msgs[0], content: `${dateContext}\n\n${msgs[0].content}` }, ...msgs.slice(1)]
+    : [{ role: 'system', content: `${dateContext}\n\nYou are a helpful assistant.` }, ...msgs];
+
+  const requestBody: any = {
+    model: model,
+    messages: msgsWithTime,
+    stream: true
+  };
+
+  // Add web search tool if enabled
+  const webSearchEnabled = config && shouldEnableWebSearch(config);
+  if (webSearchEnabled) {
+    requestBody.tools = [WEB_SEARCH_TOOL];
+    requestBody.tool_choice = 'auto';
   }
 
   const response = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      model: model,
-      messages: msgs,
-      stream: true
-    }),
+    body: JSON.stringify(requestBody),
     signal
   });
 
   if (!response.ok) {
-    const err = await response.text(); // Parse text as it might be JSON or plain
+    const err = await response.text();
     try {
       const jsonErr = JSON.parse(err);
       throw new Error(jsonErr.error?.message || response.statusText);
@@ -441,6 +775,7 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
   }
 
   let fullText = '';
+  let toolCalls: any[] = [];
 
   await readStream(response, (text) => {
     fullText += text;
@@ -454,17 +789,125 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
 
     try {
       const json = JSON.parse(dataStr);
-      const content = json.choices?.[0]?.delta?.content;
+      const choice = json.choices?.[0];
+
+      // Check for tool calls
+      if (choice?.delta?.tool_calls) {
+        for (const tc of choice.delta.tool_calls) {
+          if (tc.index !== undefined) {
+            if (!toolCalls[tc.index]) {
+              toolCalls[tc.index] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+            }
+            if (tc.id) toolCalls[tc.index].id = tc.id;
+            if (tc.function?.name) toolCalls[tc.index].function.name = tc.function.name;
+            if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+          }
+        }
+        return null;
+      }
+
+      const content = choice?.delta?.content;
       return content || null;
     } catch (e) {
       return null;
     }
   });
 
+  // Handle tool calls if any
+  if (toolCalls.length > 0 && config && webSearchEnabled) {
+    for (const toolCall of toolCalls) {
+      if (toolCall.function.name === 'web_search') {
+        try {
+          const args = JSON.parse(toolCall.function.arguments);
+          const query = args.query;
+
+          // Notify UI that search is starting
+          if (onWebSearch) {
+            onWebSearch({ query, isSearching: true });
+          }
+
+          // Execute web search
+          const searchResult = await executeWebSearch(query, config);
+
+
+          // Notify UI with search results and sources
+          if (onWebSearch) {
+            onWebSearch({
+              query,
+              result: searchResult.content,
+              isSearching: false,
+              sources: searchResult.sources
+            });
+          }
+
+          // Build follow-up messages with tool result
+          // Add explicit instruction to use the search results
+          const searchInstruction = `Based on the web search results above, provide an accurate and up-to-date answer. The search results contain current information - use this data to answer the user's question. Do not rely on your training data if it conflicts with the search results.`;
+
+          const followUpMessages: any[] = [
+            ...msgsWithTime,
+            {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{
+                id: toolCall.id,
+                type: 'function',
+                function: {
+                  name: 'web_search',
+                  arguments: toolCall.function.arguments
+                }
+              }]
+            },
+            {
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: `[WEB SEARCH RESULTS]\n${searchResult.content}\n\n[INSTRUCTION]\n${searchInstruction}`
+            }
+          ];
+
+          // Make follow-up call to get final response
+          const followUpResponse = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              model: model,
+              messages: followUpMessages,
+              stream: true
+            }),
+            signal
+          });
+
+          if (followUpResponse.ok) {
+            await readStream(followUpResponse, (text) => {
+              fullText += text;
+              onChunk(text);
+            }, (line) => {
+              const trim = line.trim();
+              if (!trim || !trim.startsWith('data: ')) return null;
+              const dataStr = trim.slice(6);
+              if (dataStr === '[DONE]') return null;
+              try {
+                const json = JSON.parse(dataStr);
+                return json.choices?.[0]?.delta?.content || null;
+              } catch {
+                return null;
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Tool call failed:', e);
+          if (onWebSearch) {
+            onWebSearch({ query: '', result: 'Search failed', isSearching: false, sources: [] });
+          }
+        }
+      }
+    }
+  }
+
   return { text: fullText };
 };
 
-const streamAnthropic = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, signal?: AbortSignal): Promise<ApiResponse> => {
+const streamAnthropic = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, signal?: AbortSignal, _config?: AppConfig): Promise<ApiResponse> => {
   const url = `${baseUrl}/messages`;
 
   const systemMessage = messages.find(m => m.role === 'system');
@@ -527,6 +970,74 @@ const streamAnthropic = async (apiKey: string, baseUrl: string, model: string, m
       }
       return null;
     } catch {
+      return null;
+    }
+  });
+
+  return { text: fullText };
+};
+
+// Streaming for Perplexity (OpenAI compatible SSE format)
+const streamPerplexity = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, signal?: AbortSignal): Promise<ApiResponse> => {
+  const url = `${baseUrl}/chat/completions`;
+
+  const msgs = messages.map(m => {
+    if (m.image) {
+      return {
+        role: m.role,
+        content: [
+          { type: "text", text: m.content },
+          { type: "image_url", image_url: { url: m.image } }
+        ]
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: msgs,
+      stream: true,
+      web_search_options: {
+        search_type: 'pro'
+      }
+    }),
+    signal
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    try {
+      const jsonErr = JSON.parse(err);
+      throw new Error(jsonErr.error?.message || response.statusText);
+    } catch {
+      throw new Error(err || response.statusText);
+    }
+  }
+
+  let fullText = '';
+
+  await readStream(response, (text) => {
+    fullText += text;
+    onChunk(text);
+  }, (line) => {
+    const trim = line.trim();
+    if (!trim || !trim.startsWith('data: ')) return null;
+
+    const dataStr = trim.slice(6);
+    if (dataStr === '[DONE]') return null;
+
+    try {
+      const json = JSON.parse(dataStr);
+      const content = json.choices?.[0]?.delta?.content;
+      return content || null;
+    } catch (e) {
       return null;
     }
   });

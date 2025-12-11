@@ -2,7 +2,20 @@ import { type AppConfig, DEFAULT_CONFIG } from './types';
 
 export const getStorage = async (): Promise<AppConfig> => {
   const result = await chrome.storage.sync.get('appConfig');
-  return result.appConfig ? { ...DEFAULT_CONFIG, ...result.appConfig } : DEFAULT_CONFIG;
+  if (!result.appConfig) {
+    return DEFAULT_CONFIG;
+  }
+
+  // Deep merge to ensure new providers are included when loading old config
+  const stored = result.appConfig as Partial<AppConfig>;
+  return {
+    ...DEFAULT_CONFIG,
+    ...stored,
+    // Deep merge nested objects to include new provider defaults
+    apiKeys: { ...DEFAULT_CONFIG.apiKeys, ...stored.apiKeys },
+    customBaseUrls: { ...DEFAULT_CONFIG.customBaseUrls, ...stored.customBaseUrls },
+    selectedModel: { ...DEFAULT_CONFIG.selectedModel, ...stored.selectedModel },
+  };
 };
 
 export const setStorage = async (config: AppConfig): Promise<void> => {
