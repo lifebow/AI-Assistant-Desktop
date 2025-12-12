@@ -24,13 +24,60 @@ const WEB_SEARCH_TOOL = {
   }
 };
 
-// Execute web search using Perplexity
+// Execute web search using Perplexity or Kagi
 interface WebSearchResult {
   content: string;
   sources: Array<{ title: string; url: string; snippet?: string }>;
 }
 
-const executeWebSearch = async (query: string, config: AppConfig): Promise<WebSearchResult> => {
+// Execute web search using Kagi
+const executeKagiWebSearch = async (query: string, kagiSession: string): Promise<WebSearchResult> => {
+  try {
+    // URL encode the query
+    const encodedQuery = encodeURIComponent(query).replace(/%20/g, '+');
+
+    const response = await fetch(`https://kagi.com/mother/context?q=${encodedQuery}`, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/vnd.kagi.stream',
+        'accept-language': 'en-US,en;q=0.9',
+        'cache-control': 'no-cache',
+        'content-length': '0',
+        'origin': 'https://kagi.com',
+        'pragma': 'no-cache',
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'cookie': `kagi_session=${kagiSession}`
+      }
+    });
+
+    if (!response.ok) {
+      return { content: `Kagi search error: ${response.statusText}`, sources: [] };
+    }
+
+    // Kagi returns raw text with JSON-like structure
+    const rawText = await response.text();
+
+    // Extract the markdown content between "md":" and ","metadata"
+    // The format is: "md":"<markdown content>","metadata"
+    let content = rawText;
+
+    const mdMatch = rawText.match(/"md":"([\s\S]*?)","metadata"/);
+    if (mdMatch && mdMatch[1]) {
+      // Unescape the JSON string content
+      content = mdMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+    }
+
+    return { content: content || 'No search results found.', sources: [] };
+  } catch (e: any) {
+    return { content: `Kagi search failed: ${e.message}`, sources: [] };
+  }
+};
+
+// Execute web search using Perplexity
+const executePerplexityWebSearch = async (query: string, config: AppConfig): Promise<WebSearchResult> => {
   const perplexityKeys = config.apiKeys['perplexity'];
   if (!perplexityKeys || perplexityKeys.length === 0) {
     return { content: 'Error: No Perplexity API key configured for web search.', sources: [] };
@@ -101,17 +148,35 @@ const executeWebSearch = async (query: string, config: AppConfig): Promise<WebSe
   }
 };
 
+// Execute web search using configured provider (Perplexity or Kagi)
+const executeWebSearch = async (query: string, config: AppConfig): Promise<WebSearchResult> => {
+  const provider = config.webSearchProvider || 'perplexity';
+
+  if (provider === 'kagi') {
+    const kagiSession = config.kagiSession;
+    if (!kagiSession) {
+      return { content: 'Error: No Kagi session cookie configured for web search.', sources: [] };
+    }
+    return executeKagiWebSearch(query, kagiSession);
+  } else {
+    return executePerplexityWebSearch(query, config);
+  }
+};
+
 // Check if web search should be enabled for this request
 const shouldEnableWebSearch = (config: AppConfig): boolean => {
   // Web search is enabled if:
-  // 1. User has enableWebSearch turned on (or undefined, default to true if perplexity key exists)
-  // 2. Perplexity API key is configured
+  // 1. User has enableWebSearch turned on (or undefined, default to true)
+  // 2. Either Perplexity API key or Kagi session is configured (depending on selected provider)
   // 3. Current provider is NOT perplexity (no need for tool when using perplexity directly)
+  const webSearchProvider = config.webSearchProvider || 'perplexity';
   const hasPerplexityKey = config.apiKeys['perplexity']?.length > 0;
+  const hasKagiSession = !!config.kagiSession;
+  const hasWebSearchCredentials = webSearchProvider === 'kagi' ? hasKagiSession : hasPerplexityKey;
   const webSearchEnabled = config.enableWebSearch !== false; // Default to true
   const notUsingPerplexity = config.selectedProvider !== 'perplexity';
 
-  return hasPerplexityKey && webSearchEnabled && notUsingPerplexity;
+  return hasWebSearchCredentials && webSearchEnabled && notUsingPerplexity;
 };
 
 // API Key Quota Management
@@ -269,7 +334,7 @@ export const executeApiStream = async (
   config: AppConfig,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
-  onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }> }) => void
+  onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }>; startNewMessage?: boolean }) => void
 ): Promise<ApiResponse> => {
   const provider = config.selectedProvider;
   const apiKeys = config.apiKeys[provider];
@@ -330,7 +395,7 @@ export const callApi = async (
   config: AppConfig,
   onChunk?: (text: string) => void,
   signal?: AbortSignal,
-  onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }> }) => void
+  onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }>; startNewMessage?: boolean }) => void
 ): Promise<ApiResponse> => {
   // Check context
   if (window.location.protocol.startsWith('http')) {
@@ -697,7 +762,7 @@ const readStream = async (response: Response, onChunk: (text: string) => void, p
   }
 };
 
-const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, isOpenRouter = false, signal?: AbortSignal, config?: AppConfig, onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }> }) => void): Promise<ApiResponse> => {
+const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, isOpenRouter = false, signal?: AbortSignal, config?: AppConfig, onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }>; startNewMessage?: boolean }) => void): Promise<ApiResponse> => {
   const url = `${baseUrl}/chat/completions`;
 
   const msgs = messages.map(m => {
@@ -890,17 +955,32 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
           });
 
           if (followUpResponse.ok) {
+            // Signal that a new message should be created for the follow-up response
+            if (onWebSearch) {
+              onWebSearch({
+                query,
+                result: searchResult.content,
+                isSearching: false,
+                sources: searchResult.sources,
+                startNewMessage: true
+              });
+            }
+
+            // Track the follow-up text separately
+            let followUpText = '';
             const followUpContentType = followUpResponse.headers.get('content-type') || '';
             if (followUpContentType.includes('application/json')) {
               const data = await followUpResponse.json();
               const choice = data.choices?.[0];
               const content = choice?.message?.content || choice?.text || '';
               if (content) {
+                followUpText = content;
                 fullText += content;
                 onChunk(content);
               }
             } else {
               await readStream(followUpResponse, (text) => {
+                followUpText += text;
                 fullText += text;
                 onChunk(text);
               }, (line) => {

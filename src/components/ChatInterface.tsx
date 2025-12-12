@@ -379,35 +379,73 @@ export default function ChatInterface({
         const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
         setMessages([...newMessages, assistantMsg]);
         let accumulatedText = '';
+        let isInNewMessage = false;
 
         try {
             const res = await callApi(newMessages, config, (chunk) => {
-                accumulatedText += chunk;
-                const currentResponseTime = Date.now() - startTime;
-                setMessages(prev => {
-                    const updated = [...prev];
-                    const last = updated[updated.length - 1];
-                    if (last && last.role === 'assistant') {
-                        last.content = accumulatedText;
-                        last.responseTime = currentResponseTime;
-                    }
-                    return updated;
-                });
+                if (isInNewMessage) {
+                    // Append to the new (follow-up) message
+                    accumulatedText += chunk;
+                    const currentResponseTime = Date.now() - startTime;
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.content = accumulatedText;
+                            last.responseTime = currentResponseTime;
+                        }
+                        return updated;
+                    });
+                } else {
+                    // Append to the initial message
+                    accumulatedText += chunk;
+                    const currentResponseTime = Date.now() - startTime;
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.content = accumulatedText;
+                            last.responseTime = currentResponseTime;
+                        }
+                        return updated;
+                    });
+                }
             }, abortControllerRef.current.signal, (searchStatus) => {
-                // Update message with web search information
-                setMessages(prev => {
-                    const updated = [...prev];
-                    const last = updated[updated.length - 1];
-                    if (last && last.role === 'assistant') {
-                        last.webSearch = {
-                            query: searchStatus.query,
-                            result: searchStatus.result || '',
-                            isSearching: searchStatus.isSearching,
-                            sources: searchStatus.sources
-                        };
-                    }
-                    return updated;
-                });
+                if (searchStatus.startNewMessage) {
+                    // Create a new message for the follow-up response
+                    isInNewMessage = true;
+                    accumulatedText = ''; // Reset for new message
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        // Update the previous message with final web search info
+                        const prevLast = updated[updated.length - 1];
+                        if (prevLast && prevLast.role === 'assistant') {
+                            prevLast.webSearch = {
+                                query: searchStatus.query,
+                                result: searchStatus.result || '',
+                                isSearching: false,
+                                sources: searchStatus.sources
+                            };
+                        }
+                        // Add new assistant message for the follow-up
+                        return [...updated, { role: 'assistant', content: '' }];
+                    });
+                } else {
+                    // Just update web search info on current message
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.webSearch = {
+                                query: searchStatus.query,
+                                result: searchStatus.result || '',
+                                isSearching: searchStatus.isSearching,
+                                sources: searchStatus.sources
+                            };
+                        }
+                        return updated;
+                    });
+                }
             });
 
             if (res.error) {
@@ -665,9 +703,20 @@ export default function ChatInterface({
                                 <div className={clsx("prose prose-sm max-w-none prose-slate dark:prose-invert prose-p:leading-relaxed prose-pre:bg-slate-100 dark:prose-pre:bg-gpt-sidebar prose-pre:p-2 prose-pre:rounded-lg mb-4",
                                     "dark:px-0 dark:py-0 px-1"
                                 )}>
-                                    {/* Web Search Section */}
+                                    {/* Response content first - AI announces tool use, then continues after search */}
+                                    {!msg.content && loading && idx === messages.length - 1 && !msg.webSearch?.isSearching ? (
+                                        <div className="flex items-center gap-2 text-slate-500 dark:text-gpt-secondary py-1">
+                                            <Loader2 size={14} className="animate-spin" />
+                                            <span className="text-xs font-medium">Thinking...</span>
+                                        </div>
+                                    ) : (
+                                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    )}
+                                    {/* Web Search Section - shown BELOW the AI's content (after "I'll search for...") */}
                                     {msg.webSearch && (
-                                        <div className="mb-3 not-prose">
+                                        <div className="mt-3 not-prose">
                                             {msg.webSearch.isSearching ? (
                                                 <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-800">
                                                     <Globe size={14} className="animate-pulse" />
@@ -696,16 +745,6 @@ export default function ChatInterface({
                                                 </div>
                                             )}
                                         </div>
-                                    )}
-                                    {!msg.content && loading && idx === messages.length - 1 && !msg.webSearch?.isSearching ? (
-                                        <div className="flex items-center gap-2 text-slate-500 dark:text-gpt-secondary py-1">
-                                            <Loader2 size={14} className="animate-spin" />
-                                            <span className="text-xs font-medium">Thinking...</span>
-                                        </div>
-                                    ) : (
-                                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                                            {msg.content}
-                                        </ReactMarkdown>
                                     )}
                                     {msg.interrupted && (
                                         <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-400 dark:text-slate-500 italic border-t border-slate-100 dark:border-slate-800 pt-2">

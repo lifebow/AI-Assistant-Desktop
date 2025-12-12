@@ -40,7 +40,9 @@ const DEFAULT_CONFIG: AppConfig = {
     cropHotkey: null,
     theme: 'system',
     popupMode: 'extension',
-    popupSize: { width: 450, height: 600 }
+    popupSize: { width: 450, height: 600 },
+    webSearchProvider: 'perplexity',
+    kagiSession: ''
 };
 
 const getStorage = async (): Promise<AppConfig> => {

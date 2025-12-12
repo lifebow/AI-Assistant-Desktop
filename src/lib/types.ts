@@ -61,7 +61,9 @@ export interface AppConfig {
   theme: 'system' | 'light' | 'dark';
   popupMode?: 'extension' | 'content_script';
   popupSize?: { width: number; height: number };
-  enableWebSearch?: boolean; // Enable web search tool via Perplexity
+  enableWebSearch?: boolean; // Enable web search tool
+  webSearchProvider?: 'perplexity' | 'kagi'; // Which provider to use for web search
+  kagiSession?: string; // Kagi session cookie for web search
 }
 
 export const DEFAULT_PROMPTS: PromptTemplate[] = [
@@ -100,5 +102,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   cropHotkey: null,
   theme: 'system',
   popupMode: 'content_script',
-  popupSize: { width: 450, height: 600 }
+  popupSize: { width: 450, height: 600 },
+  webSearchProvider: 'perplexity',
+  kagiSession: ''
 };

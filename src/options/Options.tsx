@@ -385,12 +385,13 @@ export default function Options() {
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                                 Web Search
                             </h3>
-                            <div className="max-w-md">
+                            <div className="max-w-md space-y-4">
+                                {/* Enable Web Search Toggle */}
                                 <label className="flex items-center justify-between cursor-pointer group">
                                     <div>
                                         <span className="text-sm font-medium text-slate-700 dark:text-gpt-text group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Enable Web Search Tool</span>
                                         <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-1">
-                                            Allow AI models to search the web via Perplexity when they need current information.
+                                            Allow AI models to search the web when they need current information.
                                         </p>
                                     </div>
                                     <div className="relative ml-4">
@@ -399,12 +400,56 @@ export default function Options() {
                                             checked={config.enableWebSearch !== false}
                                             onChange={(e) => saveConfig({ ...config, enableWebSearch: e.target.checked })}
                                             className="sr-only peer"
-                                            disabled={!config.apiKeys['perplexity']?.length}
+                                            disabled={!(config.webSearchProvider === 'kagi' ? config.kagiSession : config.apiKeys['perplexity']?.length)}
                                         />
-                                        <div className={`w-11 h-6 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${!config.apiKeys['perplexity']?.length ? 'opacity-50' : ''}`}></div>
+                                        <div className={`w-11 h-6 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${!(config.webSearchProvider === 'kagi' ? config.kagiSession : config.apiKeys['perplexity']?.length) ? 'opacity-50' : ''}`}></div>
                                     </div>
                                 </label>
-                                {!config.apiKeys['perplexity']?.length && (
+
+                                {/* Web Search Provider Selection */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Web Search Provider</label>
+                                    <div className="relative">
+                                        <select
+                                            value={config.webSearchProvider || 'perplexity'}
+                                            onChange={(e) => saveConfig({ ...config, webSearchProvider: e.target.value as 'perplexity' | 'kagi' })}
+                                            className="w-full p-3 bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 dark:text-gpt-text appearance-none"
+                                        >
+                                            <option value="perplexity">Perplexity (API Key)</option>
+                                            <option value="kagi">Kagi (Session Cookie)</option>
+                                        </select>
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                            <Settings2 size={16} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Kagi Session Cookie Input */}
+                                {(config.webSearchProvider === 'kagi') && (
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Kagi Session Cookie</label>
+                                        <div className="relative">
+                                            <input
+                                                type="password"
+                                                value={config.kagiSession || ''}
+                                                onChange={(e) => saveConfig({ ...config, kagiSession: e.target.value })}
+                                                placeholder="Enter kagi_session cookie value"
+                                                className="w-full px-3 py-2.5 text-sm font-mono bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-gpt-text"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2">
+                                            Get this from your browser's cookies when logged into Kagi. Look for the "kagi_session" cookie value.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Warning Messages */}
+                                {config.webSearchProvider === 'kagi' && !config.kagiSession && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 flex items-center gap-1.5">
+                                        ⚠️ Enter your Kagi session cookie to enable web search.
+                                    </p>
+                                )}
+                                {config.webSearchProvider !== 'kagi' && !config.apiKeys['perplexity']?.length && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 flex items-center gap-1.5">
                                         ⚠️ Add a Perplexity API key in the Providers tab to enable web search.
                                     </p>
