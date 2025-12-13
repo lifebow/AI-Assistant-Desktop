@@ -56,21 +56,63 @@ const executeKagiWebSearch = async (query: string, kagiSession: string): Promise
 
     // Kagi returns raw text with JSON-like structure
     const rawText = await response.text();
+    let content = '';
+    const sources: Array<{ title: string; url: string; snippet?: string }> = [];
 
-    // Extract the markdown content between "md":" and ","metadata"
-    // The format is: "md":"<markdown content>","metadata"
-    let content = rawText;
+    try {
+      // Parse Kagi response
+      // Format is typically lines of JSON objects prefixed with type
+      const lines = rawText.split(/\r?\n/);
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('new_message.json:')) {
+          const jsonStr = trimmedLine.substring('new_message.json:'.length);
+          try {
+            const data = JSON.parse(jsonStr);
 
-    const mdMatch = rawText.match(/"md":"([\s\S]*?)","metadata"/);
-    if (mdMatch && mdMatch[1]) {
-      // Unescape the JSON string content
-      content = mdMatch[1]
-        .replace(/\\n/g, '\n')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\');
+            if (data.md) {
+              content = data.md;
+            }
+
+            if (data.references_md) {
+              // Format: [^1]: [Title](url) (percentage)
+              const regex = /\[\^(\d+)\]:\s*\[(.*?)\]\((.*?)\)/g;
+              let match;
+              while ((match = regex.exec(data.references_md)) !== null) {
+                sources.push({
+                  title: match[2],
+                  url: match[3]
+                });
+              }
+            }
+          } catch (parseError) {
+            console.error('Error parsing Kagi JSON payload:', parseError);
+          }
+          // We found the message, breaks out of loop.
+          // Note: In case of multiple messages, we might want the last one,
+          // but Kagi usually sends one final 'done' state message.
+          if (content) break;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse Kagi structured response', e);
     }
 
-    return { content: content || 'No search results found.', sources: [] };
+    // Fallback parsing if structured parse failed
+    if (!content) {
+      const mdMatch = rawText.match(/"md":"([\s\S]*?)","metadata"/);
+      if (mdMatch && mdMatch[1]) {
+        // Unescape the JSON string content
+        content = mdMatch[1]
+          .replace(/\\n/g, '\n')
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\');
+      } else {
+        content = rawText;
+      }
+    }
+
+    return { content: content || 'No search results found.', sources };
   } catch (e: any) {
     return { content: `Kagi search failed: ${e.message}`, sources: [] };
   }
@@ -791,7 +833,7 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
   // Build request body
   // Add current date/time context for time-sensitive queries
   const now = new Date();
-  const currentYear = now.getFullYear();
+
   const currentDateTime = now.toLocaleString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -802,7 +844,7 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
     timeZoneName: 'short'
   });
 
-  const dateContext = `IMPORTANT: Today's date is ${currentDateTime}. When searching for current/recent information, include the current date context (e.g., "${now.toLocaleString('en-US', { month: 'long', year: 'numeric' })}" or "${currentYear}") in your search queries to get up-to-date results. Do not search for outdated information from previous years.`;
+  const dateContext = `IMPORTANT: Today's date is ${currentDateTime}. The web search tool retrieves real-time information. When searching for current status (e.g. "price now", "latest news"), do NOT unnecessarily append the current month/year to the query, as this may limit results. Trust the search tool to provide the latest data. Only specify dates if searching for historical information or specific future projections. If you decide to use the web search tool, you should briefly explain what you are going to search for before calling the tool.`;
 
   // Prepend system message with current time if not already present
   const msgsWithTime = msgs[0]?.role === 'system'
@@ -879,7 +921,6 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
               if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
             }
           }
-          return null;
         }
 
         const content = choice?.delta?.content;
@@ -925,7 +966,7 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
             ...msgsWithTime,
             {
               role: 'assistant',
-              content: null,
+              content: fullText || null, // Preserve original thought
               tool_calls: [{
                 id: toolCall.id,
                 type: 'function',
