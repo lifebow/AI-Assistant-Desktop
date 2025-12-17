@@ -1,5 +1,43 @@
 import { DEFAULT_CONFIG } from '../lib/types';
 
+/**
+ * Convert an image URL to a base64 data URL.
+ * For external URLs, fetches the image and converts to base64.
+ * For data URLs, returns as-is.
+ */
+const imageUrlToDataUrl = async (imageUrl: string): Promise<string> => {
+    // Already a data URL
+    if (imageUrl.startsWith('data:')) {
+        return imageUrl;
+    }
+
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+            console.error('Failed to fetch image:', response.statusText);
+            return imageUrl; // Return original URL as fallback
+        }
+
+        const blob = await response.blob();
+
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                if (typeof reader.result === 'string') {
+                    resolve(reader.result);
+                } else {
+                    reject(new Error('Failed to convert blob to data URL'));
+                }
+            };
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error('Failed to convert image to data URL:', error);
+        return imageUrl; // Return original URL as fallback
+    }
+};
+
 chrome.runtime.onInstalled.addListener(async () => {
     // Initialize storage with defaults if not present
     const { appConfig } = await chrome.storage.sync.get('appConfig');
@@ -148,14 +186,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
             await openUi();
         }
     } else if (info.menuItemId === "ai-ask-image" && info.srcUrl && tab?.id) {
+        // Convert external URL to data URL so AI models can always access the image
+        const imageDataUrl = await imageUrlToDataUrl(info.srcUrl);
+
         if (mode === 'content_script') {
             chrome.tabs.sendMessage(tab.id, {
                 action: 'open_content_popup',
                 selection: '',
-                image: info.srcUrl
+                image: imageDataUrl
             });
         } else {
-            await chrome.storage.local.set({ contextSelection: null, contextImage: info.srcUrl });
+            await chrome.storage.local.set({ contextSelection: null, contextImage: imageDataUrl });
             await openUi();
         }
     }

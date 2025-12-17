@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { type AppConfig, type ChatMessage, type PromptTemplate, type Provider } from '../lib/types';
 import { callApi, fetchModels } from '../lib/api';
 import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, ChevronRight, Check, X, Copy, PauseCircle, SquarePen, Clock, Globe, Link2, ExternalLink, Square } from 'lucide-react';
@@ -58,6 +59,7 @@ export default function ChatInterface({
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
     const [expandedSearches, setExpandedSearches] = useState<Record<number, boolean>>({});
     const [sourcesModal, setSourcesModal] = useState<{ sources: Array<{ title: string; url: string; snippet?: string }>; query: string } | null>(null);
+    const [imageZoomOpen, setImageZoomOpen] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const modelMenuRef = useRef<HTMLDivElement>(null);
@@ -670,15 +672,47 @@ export default function ChatInterface({
                     </div>
                 )}
 
-                {/* Image Context Badge */}
+                {/* Image Context Badge - Only shows before first message */}
                 {selectedImage && messages.length === 0 && (
-                    <div className="bg-blue-50 dark:bg-gpt-sidebar border border-blue-100 dark:border-gpt-hover rounded-xl p-3 mb-4">
-                        <div className="flex justify-between items-start">
-                            <div className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-1">Image Context</div>
-                            <button onClick={clearImageContext} className="text-slate-400 hover:text-red-500 transition-colors" title="Clear image"><Trash2 size={14} /></button>
+                    <div className="flex justify-end mb-4">
+                        <div className="inline-flex flex-col bg-blue-50 dark:bg-gpt-sidebar border border-blue-100 dark:border-gpt-hover rounded-xl p-2">
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                                <div className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider">Image</div>
+                                <button onClick={clearImageContext} className="text-slate-400 hover:text-red-500 transition-colors" title="Clear image"><Trash2 size={14} /></button>
+                            </div>
+                            <button
+                                onClick={() => setImageZoomOpen(true)}
+                                className="w-48 h-48 rounded-lg overflow-hidden border-2 border-blue-200 dark:border-gpt-hover hover:opacity-80 transition-opacity cursor-zoom-in"
+                                title="Click to enlarge"
+                            >
+                                <img src={selectedImage} alt="Selected Context" className="w-full h-full object-cover" />
+                            </button>
                         </div>
-                        <img src={selectedImage} alt="Selected Context" className="max-h-32 rounded-lg border border-blue-200 dark:border-gpt-hover object-contain bg-white dark:bg-black" />
                     </div>
+                )}
+
+                {/* Image Zoom Modal - Rendered to document.body for true fullscreen */}
+                {imageZoomOpen && selectedImage && createPortal(
+                    <div
+                        className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+                        style={{ zIndex: 2147483647 }}
+                        onClick={() => setImageZoomOpen(false)}
+                    >
+                        <img
+                            src={selectedImage}
+                            alt="Zoomed Context"
+                            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                            onClick={() => setImageZoomOpen(false)}
+                            className="absolute top-4 right-4 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors"
+                            title="Close (ESC)"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>,
+                    document.body
                 )}
 
                 {/* Welcome State */}
@@ -835,7 +869,19 @@ export default function ChatInterface({
                                     )}
                                 </div>
                             ) : (
-                                <div className="whitespace-pre-wrap mb-2">{msg.content}</div>
+                                <div>
+                                    {/* Show attached image in user message */}
+                                    {msg.image && (
+                                        <button
+                                            onClick={() => setImageZoomOpen(true)}
+                                            className="mb-2 rounded-lg overflow-hidden hover:opacity-80 transition-opacity cursor-zoom-in max-w-full"
+                                            title="Click to enlarge"
+                                        >
+                                            <img src={msg.image} alt="Attached" className="w-48 h-48 object-cover rounded-lg" />
+                                        </button>
+                                    )}
+                                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                                </div>
                             )}
                             <button
                                 onClick={() => {

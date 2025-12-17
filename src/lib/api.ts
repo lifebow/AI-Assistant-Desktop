@@ -5,6 +5,31 @@ interface ApiResponse {
   error?: string;
 }
 
+/**
+ * Parse image URL for Gemini API format.
+ * Expects a data URL (base64). External URLs should be converted to data URLs
+ * by the background script before reaching here.
+ */
+const parseImageForGemini = (imageUrl: string): { inlineData: { mimeType: string; data: string } } | null => {
+  if (!imageUrl) return null;
+
+  // Check if it's a data URL (base64)
+  if (imageUrl.startsWith('data:')) {
+    const [meta, data] = imageUrl.split(',');
+    if (!meta || !data) return null;
+
+    const mimeType = meta.split(':')[1]?.split(';')[0];
+    if (!mimeType) return null;
+
+    return { inlineData: { mimeType, data } };
+  }
+
+  // External URLs should have been converted to data URLs by the background script
+  // Log a warning if we somehow get here with an external URL
+  console.warn('parseImageForGemini received external URL instead of data URL:', imageUrl.substring(0, 100));
+  return null;
+};
+
 // Web Search Tool Definition (OpenAI format)
 const WEB_SEARCH_TOOL = {
   type: 'function' as const,
@@ -580,10 +605,10 @@ const callGoogle = async (apiKey: string, baseUrl: string, model: string, messag
   const contents = messages.map(m => {
     const parts: any[] = [{ text: m.content }];
     if (m.image) {
-      // extract base64
-      const [meta, data] = m.image.split(',');
-      const mimeType = meta.split(':')[1].split(';')[0];
-      parts.push({ inlineData: { mimeType, data } });
+      const imagePart = parseImageForGemini(m.image);
+      if (imagePart) {
+        parts.push(imagePart);
+      }
     }
     return {
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -1226,9 +1251,10 @@ const streamGoogle = async (apiKey: string, baseUrl: string, model: string, mess
   const contents = messages.map(m => {
     const parts: any[] = [{ text: m.content }];
     if (m.image) {
-      const [meta, data] = m.image.split(',');
-      const mimeType = meta.split(':')[1].split(';')[0];
-      parts.push({ inlineData: { mimeType, data } });
+      const imagePart = parseImageForGemini(m.image);
+      if (imagePart) {
+        parts.push(imagePart);
+      }
     }
     return {
       role: m.role === 'assistant' ? 'model' : 'user',
