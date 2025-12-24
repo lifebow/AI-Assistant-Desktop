@@ -195,9 +195,10 @@ export default function ChatInterface({
         }
     }, [config.apiKeys, config.customBaseUrls]);
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, loading]);
+    // Auto-scroll disabled - users can manually scroll if needed
+    // useEffect(() => {
+    //     scrollToBottom();
+    // }, [messages, loading]);
 
     useEffect(() => {
         if (textareaRef.current) {
@@ -229,8 +230,23 @@ export default function ChatInterface({
         }
     }, [isModelMenuOpen]);
 
+    // Auto-focus textarea when popup is first shown
+    useEffect(() => {
+        // Focus the textarea after component mounts
+        // Small delay ensures the component is fully rendered
+        const timer = setTimeout(() => {
+            if (textareaRef.current) {
+                textareaRef.current.focus();
+            }
+        }, 100);
+        return () => clearTimeout(timer);
+    }, []);
+
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        // Use setTimeout to ensure DOM has updated
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
     };
 
     // Clear context and immediately persist (bypass debounce)
@@ -380,6 +396,10 @@ export default function ChatInterface({
         // Add placeholder assistant message
         const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
         setMessages([...newMessages, assistantMsg]);
+
+        // Scroll to bottom when user sends a message
+        scrollToBottom();
+
         let accumulatedText = '';
         let isInNewMessage = false;
 
