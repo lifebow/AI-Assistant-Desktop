@@ -62,7 +62,7 @@ export interface AppConfig {
   popupMode?: 'extension' | 'content_script';
   popupSize?: { width: number; height: number };
   enableWebSearch?: boolean; // Enable web search tool
-  webSearchProvider?: 'perplexity' | 'kagi'; // Which provider to use for web search
+  webSearchProvider?: 'perplexity' | 'kagi' | 'google'; // Which provider to use for web search
   kagiSession?: string; // Kagi session cookie for web search
 }
 

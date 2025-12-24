@@ -49,6 +49,11 @@ const WEB_SEARCH_TOOL = {
   }
 };
 
+// Google Search Tool Definition (Gemini native format)
+const GOOGLE_SEARCH_TOOL = {
+  google_search: {}
+};
+
 // Execute web search using Perplexity or Kagi
 interface WebSearchResult {
   content: string;
@@ -229,6 +234,115 @@ const executePerplexityWebSearch = async (query: string, config: AppConfig, sign
   }
 };
 
+// Execute web search using Google Grounding Search (via Gemini API)
+const executeGoogleWebSearch = async (query: string, config: AppConfig, signal?: AbortSignal): Promise<WebSearchResult> => {
+  // Try to use Google API key first, otherwise use current provider's key
+  const currentProvider = config.selectedProvider;
+  const googleKeys = config.apiKeys['google'];
+  const currentProviderKeys = config.apiKeys[currentProvider];
+
+  let apiKey: string;
+  let baseUrl: string;
+  let useOpenAIFormat = false;
+
+  if (googleKeys && googleKeys.length > 0) {
+    // Use Google API
+    apiKey = googleKeys[Math.floor(Math.random() * googleKeys.length)];
+    baseUrl = config.customBaseUrls['google'] || 'https://generativelanguage.googleapis.com/v1beta';
+  } else if (currentProviderKeys && currentProviderKeys.length > 0) {
+    // Use current provider (likely supports Gemini models)
+    apiKey = currentProviderKeys[Math.floor(Math.random() * currentProviderKeys.length)];
+    baseUrl = config.customBaseUrls[currentProvider] || '';
+    useOpenAIFormat = currentProvider !== 'google'; // Custom providers use OpenAI format
+  } else {
+    return { content: 'Error: No API key available for web search.', sources: [] };
+  }
+
+  // Use gemini-2.5-flash for Google grounding search
+  const model = 'gemini-2.5-flash';
+
+  try {
+    let url: string;
+    let requestBody: any;
+    let headers: any = { 'Content-Type': 'application/json' };
+
+    if (useOpenAIFormat) {
+      // OpenAI-compatible format for custom providers  
+      url = `${baseUrl}/chat/completions`;
+      headers['Authorization'] = `Bearer ${apiKey}`;
+      requestBody = {
+        model: model,
+        messages: [{ role: 'user', content: query }],
+        tools: [GOOGLE_SEARCH_TOOL]
+      };
+    } else {
+      // Gemini API format
+      url = `${baseUrl}/models/${model}:generateContent?key=${apiKey}`;
+      requestBody = {
+        contents: [{
+          role: 'user',
+          parts: [{ text: query }]
+        }],
+        tools: [GOOGLE_SEARCH_TOOL]
+      };
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      signal,
+      body: JSON.stringify(requestBody)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      return { content: `Google search error: ${err.error?.message || response.statusText}`, sources: [] };
+    }
+
+    const data = await response.json();
+
+    // Extract content and grounding metadata - handle both Gemini and OpenAI response formats
+    let content: string;
+    let groundingMetadata: any;
+
+    if (data.candidates) {
+      // Gemini format
+      content = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No search results found.';
+      groundingMetadata = data.candidates?.[0]?.groundingMetadata;
+    } else if (data.choices) {
+      // OpenAI format
+      content = data.choices?.[0]?.message?.content || 'No search results found.';
+      groundingMetadata = data.choices?.[0]?.message?.groundingMetadata;
+    } else {
+      content = 'No search results found.';
+    }
+
+    // Extract grounding metadata for sources
+    const sources: Array<{ title: string; url: string; snippet?: string }> = [];
+
+    if (groundingMetadata?.groundingChunks) {
+      groundingMetadata.groundingChunks.forEach((chunk: any) => {
+        if (chunk.web) {
+          sources.push({
+            title: chunk.web.title || 'Source',
+            url: chunk.web.uri || '',
+            snippet: chunk.web.snippet
+          });
+        }
+      });
+    }
+
+    // Also check webSearchQueries if available
+    if (groundingMetadata?.webSearchQueries) {
+      // Store the queries used (optional, for debugging)
+      console.log('Google search queries used:', groundingMetadata.webSearchQueries);
+    }
+
+    return { content, sources };
+  } catch (e: any) {
+    return { content: `Google search failed: ${e.message}`, sources: [] };
+  }
+};
+
 // Main web search dispatcher
 const executeWebSearch = async (query: string, config: AppConfig, signal?: AbortSignal): Promise<WebSearchResult> => {
   const provider = config.webSearchProvider || 'perplexity';
@@ -241,20 +355,47 @@ const executeWebSearch = async (query: string, config: AppConfig, signal?: Abort
     return { content: 'Error: Kagi session cookie is missing.', sources: [] };
   }
 
+  if (provider === 'google') {
+    return executeGoogleWebSearch(query, config, signal);
+  }
+
   // Default to Perplexity
   return executePerplexityWebSearch(query, config, signal);
 };
 
 // Check if web search should be enabled for this request
-const shouldEnableWebSearch = (config: AppConfig): boolean => {
+const shouldEnableWebSearch = (config: AppConfig, model?: string): boolean => {
   // Web search is enabled if:
   // 1. User has enableWebSearch turned on (or undefined, default to true)
-  // 2. Either Perplexity API key or Kagi session is configured (depending on selected provider)
+  // 2. Either Perplexity API key, Kagi session, or Google API key is configured (depending on selected provider)
+  //    OR using a Gemini model with Google grounding search (native support via custom provider)
   // 3. Current provider is NOT perplexity (no need for tool when using perplexity directly)
   const webSearchProvider = config.webSearchProvider || 'perplexity';
   const hasPerplexityKey = config.apiKeys['perplexity']?.length > 0;
   const hasKagiSession = !!config.kagiSession;
-  const hasWebSearchCredentials = webSearchProvider === 'kagi' ? hasKagiSession : hasPerplexityKey;
+  const hasGoogleKey = config.apiKeys['google']?.length > 0;
+
+  // Check if using a Gemini model with Google grounding search
+  // In this case, we don't need a separate Google API key because the model/provider handles it natively
+  const isGeminiModel = model ? /^gemini-\d+/.test(model) : false;
+  const usingGoogleGroundingNatively = webSearchProvider === 'google' && isGeminiModel;
+
+  // Check if current provider has API key (for fallback search)
+  const currentProvider = config.selectedProvider;
+  const hasCurrentProviderKey = config.apiKeys[currentProvider]?.length > 0;
+
+  let hasWebSearchCredentials = false;
+  if (webSearchProvider === 'kagi') {
+    hasWebSearchCredentials = hasKagiSession;
+  } else if (webSearchProvider === 'google') {
+    // For Google grounding search:
+    // - If using a Gemini model, allow it (native support via any provider with API key)
+    // - For non-Gemini models, allow if Google API key OR current provider has API key (for fallback search)
+    hasWebSearchCredentials = usingGoogleGroundingNatively || hasGoogleKey || hasCurrentProviderKey;
+  } else {
+    hasWebSearchCredentials = hasPerplexityKey;
+  }
+
   const webSearchEnabled = config.enableWebSearch !== false; // Default to true
   const notUsingPerplexity = config.selectedProvider !== 'perplexity';
 
@@ -439,7 +580,7 @@ export const executeApiStream = async (
     let result: ApiResponse;
     switch (provider) {
       case 'google':
-        result = await streamGoogle(apiKey, baseUrl, model, messages, onChunk, signal);
+        result = await streamGoogle(apiKey, baseUrl, model, messages, onChunk, signal, config, onWebSearch);
         break;
       case 'openai':
       case 'openrouter':
@@ -884,7 +1025,19 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
     timeZoneName: 'short'
   });
 
-  const dateContext = `IMPORTANT: Today's date is ${currentDateTime}. The web search tool retrieves real-time information. When searching for current status (e.g. "price now", "latest news"), do NOT unnecessarily append the current month/year to the query, as this may limit results. Trust the search tool to provide the latest data. Only specify dates if searching for historical information or specific future projections. If you decide to use the web search tool, you should briefly explain what you are going to search for before calling the tool.`;
+  // Detect web search configuration early to conditionally add instructions
+  const webSearchEnabled = config && shouldEnableWebSearch(config, model);
+  const isGeminiModel = /^gemini-\d+/.test(model);
+  const useNativeGoogleSearch = webSearchEnabled && 
+    config?.webSearchProvider === 'google' && 
+    isGeminiModel;
+
+  // Only add web search instructions for OpenAI-format tool, not for native google_search
+const webSearchInstruction = (!useNativeGoogleSearch && webSearchEnabled) 
+    ? ' The web search tool retrieves real-time information. When searching for current status (e.g. "price now", "latest news"), do NOT unnecessarily append the current month/year to the query, as this may limit results. Trust the search tool to provide the latest data. Only specify dates if searching for historical information or specific future projections. If you decide to use the web search tool, you should briefly explain what you are going to search for before calling the tool.'
+    : '';
+
+  const dateContext = `IMPORTANT: Today's date is ${currentDateTime}.${webSearchInstruction}`;
 
   // Prepend system message with current time if not already present
   const msgsWithTime = msgs[0]?.role === 'system'
@@ -897,11 +1050,16 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
     stream: true
   };
 
-  // Add web search tool if enabled
-  const webSearchEnabled = config && shouldEnableWebSearch(config);
+
   if (webSearchEnabled) {
-    requestBody.tools = [WEB_SEARCH_TOOL];
-    requestBody.tool_choice = 'auto';
+    if (useNativeGoogleSearch) {
+      // Use native Google grounding search for Gemini models
+      requestBody.tools = [GOOGLE_SEARCH_TOOL];
+    } else {
+      // Use OpenAI-format web search tool for other models
+      requestBody.tools = [WEB_SEARCH_TOOL];
+      requestBody.tool_choice = 'auto';
+    }
   }
 
   const response = await fetch(url, {
@@ -923,6 +1081,7 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
 
   let fullText = '';
   let toolCalls: any[] = [];
+  let groundingSources: Array<{ title: string; url: string; snippet?: string }> = [];
 
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -933,6 +1092,22 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
 
     if (choice?.message?.tool_calls) {
       toolCalls = choice.message.tool_calls;
+    }
+
+    // Extract grounding metadata for Gemini models with native search
+    if (useNativeGoogleSearch && choice?.message?.groundingMetadata) {
+      const groundingMetadata = choice.message.groundingMetadata;
+      if (groundingMetadata?.groundingChunks) {
+        groundingMetadata.groundingChunks.forEach((chunk: any) => {
+          if (chunk.web) {
+            groundingSources.push({
+              title: chunk.web.title || 'Source',
+              url: chunk.web.uri || '',
+              snippet: chunk.web.snippet
+            });
+          }
+        });
+      }
     }
   } else {
     await readStream(response, (text) => {
@@ -963,11 +1138,41 @@ const streamOpenAI = async (apiKey: string, baseUrl: string, model: string, mess
           }
         }
 
+        // Extract grounding metadata for Gemini models in streaming
+        if (useNativeGoogleSearch && choice?.delta?.groundingMetadata) {
+          const groundingMetadata = choice.delta.groundingMetadata;
+          if (groundingMetadata?.groundingChunks) {
+            groundingMetadata.groundingChunks.forEach((chunk: any) => {
+              if (chunk.web) {
+                // Check if we already have this source to avoid duplicates
+                const exists = groundingSources.some(s => s.url === chunk.web.uri);
+                if (!exists) {
+                  groundingSources.push({
+                    title: chunk.web.title || 'Source',
+                    url: chunk.web.uri || '',
+                    snippet: chunk.web.snippet
+                  });
+                }
+              }
+            });
+          }
+        }
+
         const content = choice?.delta?.content;
         return content || null;
       } catch (e) {
         return null;
       }
+    });
+  }
+
+  // If we have grounding sources from native Google search, notify the UI
+  if (useNativeGoogleSearch && groundingSources.length > 0 && onWebSearch) {
+    onWebSearch({
+      query: messages[messages.length - 1]?.content || '',
+      result: fullText,
+      isSearching: false,
+      sources: groundingSources
     });
   }
 
@@ -1256,7 +1461,7 @@ const streamPerplexity = async (apiKey: string, baseUrl: string, model: string, 
   return { text: fullText };
 };
 
-const streamGoogle = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, signal?: AbortSignal): Promise<ApiResponse> => {
+const streamGoogle = async (apiKey: string, baseUrl: string, model: string, messages: ChatMessage[], onChunk: (text: string) => void, signal?: AbortSignal, config?: AppConfig, onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }>; startNewMessage?: boolean }) => void): Promise<ApiResponse> => {
   // API: POST https://.../streamGenerateContent?key=...
   const url = `${baseUrl}/models/${model}:streamGenerateContent?key=${apiKey}`;
 
@@ -1274,10 +1479,26 @@ const streamGoogle = async (apiKey: string, baseUrl: string, model: string, mess
     };
   });
 
+  // Check if we should enable Google Grounding Search for Gemini models
+  // Native support for models like gemini-2.0-flash-exp, gemini-1.5-pro, etc.
+  const isGeminiModel = /^gemini-\d+/.test(model);
+  const useGoogleSearch = config &&
+    config.webSearchProvider === 'google' &&
+    config.enableWebSearch !== false &&
+    isGeminiModel &&
+    config.apiKeys['google']?.length > 0;
+
+  const requestBody: any = { contents };
+
+  // Add google_search tool for native grounding
+  if (useGoogleSearch) {
+    requestBody.tools = [GOOGLE_SEARCH_TOOL];
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents }),
+    body: JSON.stringify(requestBody),
     signal
   });
 
@@ -1287,12 +1508,40 @@ const streamGoogle = async (apiKey: string, baseUrl: string, model: string, mess
   }
 
   let fullText = '';
+  let groundingSources: Array<{ title: string; url: string; snippet?: string }> = [];
 
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     const data = await response.json();
     fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (fullText) onChunk(fullText);
+
+    // Extract grounding metadata if available
+    if (useGoogleSearch) {
+      const groundingMetadata = data.candidates?.[0]?.groundingMetadata;
+      if (groundingMetadata?.groundingChunks) {
+        groundingMetadata.groundingChunks.forEach((chunk: any) => {
+          if (chunk.web) {
+            groundingSources.push({
+              title: chunk.web.title || 'Source',
+              url: chunk.web.uri || '',
+              snippet: chunk.web.snippet
+            });
+          }
+        });
+      }
+
+      // Notify about grounding sources if we have onWebSearch callback
+      if (onWebSearch && groundingSources.length > 0) {
+        onWebSearch({
+          query: messages[messages.length - 1]?.content || '',
+          result: fullText,
+          isSearching: false,
+          sources: groundingSources
+        });
+      }
+    }
+
     return { text: fullText };
   }
 
@@ -1347,6 +1596,26 @@ const streamGoogle = async (apiKey: string, baseUrl: string, model: string, mess
               fullText += text;
               onChunk(text);
             }
+
+            // Extract grounding metadata from streaming response
+            if (useGoogleSearch) {
+              const groundingMetadata = json.candidates?.[0]?.groundingMetadata;
+              if (groundingMetadata?.groundingChunks) {
+                groundingMetadata.groundingChunks.forEach((chunk: any) => {
+                  if (chunk.web) {
+                    // Check if we already have this source to avoid duplicates
+                    const exists = groundingSources.some(s => s.url === chunk.web.uri);
+                    if (!exists) {
+                      groundingSources.push({
+                        title: chunk.web.title || 'Source',
+                        url: chunk.web.uri || '',
+                        snippet: chunk.web.snippet
+                      });
+                    }
+                  }
+                });
+              }
+            }
           } catch (e) {
             // ignore malformed
           }
@@ -1360,6 +1629,16 @@ const streamGoogle = async (apiKey: string, baseUrl: string, model: string, mess
     if (consumedUpTo > 0) {
       buffer = buffer.substring(consumedUpTo);
     }
+  }
+
+  // Notify about grounding sources at the end of streaming
+  if (useGoogleSearch && onWebSearch && groundingSources.length > 0) {
+    onWebSearch({
+      query: messages[messages.length - 1]?.content || '',
+      result: fullText,
+      isSearching: false,
+      sources: groundingSources
+    });
   }
 
   return { text: fullText };

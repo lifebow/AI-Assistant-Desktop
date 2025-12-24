@@ -400,9 +400,17 @@ export default function Options() {
                                             checked={config.enableWebSearch !== false}
                                             onChange={(e) => saveConfig({ ...config, enableWebSearch: e.target.checked })}
                                             className="sr-only peer"
-                                            disabled={!(config.webSearchProvider === 'kagi' ? config.kagiSession : config.apiKeys['perplexity']?.length)}
+                                            disabled={!(
+                                                config.webSearchProvider === 'kagi' ? config.kagiSession :
+                                                    config.webSearchProvider === 'google' ? true :
+                                                        config.apiKeys['perplexity']?.length
+                                            )}
                                         />
-                                        <div className={`w-11 h-6 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${!(config.webSearchProvider === 'kagi' ? config.kagiSession : config.apiKeys['perplexity']?.length) ? 'opacity-50' : ''}`}></div>
+                                        <div className={`w-11 h-6 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${!(
+                                            config.webSearchProvider === 'kagi' ? config.kagiSession :
+                                                config.webSearchProvider === 'google' ? true :
+                                                    config.apiKeys['perplexity']?.length
+                                        ) ? 'opacity-50' : ''}`}></div>
                                     </div>
                                 </label>
 
@@ -412,11 +420,12 @@ export default function Options() {
                                     <div className="relative">
                                         <select
                                             value={config.webSearchProvider || 'perplexity'}
-                                            onChange={(e) => saveConfig({ ...config, webSearchProvider: e.target.value as 'perplexity' | 'kagi' })}
+                                            onChange={(e) => saveConfig({ ...config, webSearchProvider: e.target.value as 'perplexity' | 'kagi' | 'google' })}
                                             className="w-full p-3 bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700 dark:text-gpt-text appearance-none"
                                         >
                                             <option value="perplexity">Perplexity (API Key)</option>
                                             <option value="kagi">Kagi (Session Cookie)</option>
+                                            <option value="google">Google Grounding Search (Google API Key)</option>
                                         </select>
                                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                                             <Settings2 size={16} />
@@ -455,7 +464,12 @@ export default function Options() {
                                         ⚠️ Enter your Kagi session cookie to enable web search.
                                     </p>
                                 )}
-                                {config.webSearchProvider !== 'kagi' && !config.apiKeys['perplexity']?.length && (
+                                {config.webSearchProvider === 'google' && !config.apiKeys['google']?.length && (
+                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 flex items-center gap-1.5">
+                                        ℹ️ Google API key is optional. Only needed for fallback search if your provider doesn't support Gemini models.
+                                    </p>
+                                )}
+                                {config.webSearchProvider === 'perplexity' && !config.apiKeys['perplexity']?.length && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 flex items-center gap-1.5">
                                         ⚠️ Add a Perplexity API key in the Providers tab to enable web search.
                                     </p>
