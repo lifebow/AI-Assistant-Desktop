@@ -3,7 +3,7 @@ import { type AppConfig, DEFAULT_CONFIG, type Provider, type PromptTemplate } fr
 import { getStorage, setStorage } from '../lib/storage';
 import { fetchModels } from '../lib/api';
 import { useTheme } from '../lib/theme';
-import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X, Download, Upload } from 'lucide-react';
+import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X, Download, Upload, GripVertical } from 'lucide-react';
 import { SearchableSelect } from './SearchableSelect';
 import { clsx } from 'clsx';
 
@@ -31,6 +31,7 @@ export default function Options() {
     const [showAddProvider, setShowAddProvider] = useState(false);
     const [newProviderName, setNewProviderName] = useState('');
     const [newProviderUrl, setNewProviderUrl] = useState('');
+    const [draggedPromptIdx, setDraggedPromptIdx] = useState<number | null>(null);
 
     const allProviders = [...Providers, ...(config.customProviders || []).map(p => p.id)];
 
@@ -163,6 +164,32 @@ export default function Options() {
     const handleRemovePrompt = (index: number) => {
         const prompts = config.prompts.filter((_, i) => i !== index);
         saveConfig({ ...config, prompts });
+    };
+
+    const handlePromptDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedPromptIdx(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index.toString());
+    };
+
+    const handlePromptDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        if (draggedPromptIdx === null || draggedPromptIdx === index) return;
+
+        const prompts = [...config.prompts];
+        const draggedItem = prompts[draggedPromptIdx];
+        prompts.splice(draggedPromptIdx, 1);
+        prompts.splice(index, 0, draggedItem);
+
+        setDraggedPromptIdx(index);
+        setConfig({ ...config, prompts });
+    };
+
+    const handlePromptDragEnd = () => {
+        if (draggedPromptIdx !== null) {
+            saveConfig(config);
+        }
+        setDraggedPromptIdx(null);
     };
 
     const handleHotkeyKeyDown = (e: React.KeyboardEvent) => {
@@ -746,7 +773,7 @@ export default function Options() {
                         <div className="flex justify-between items-end">
                             <div>
                                 <h2 className="text-lg font-bold text-slate-900 dark:text-gpt-text">Prompt Templates</h2>
-                                <p className="text-slate-500 dark:text-gpt-secondary text-sm mt-1">Customize the quick actions available in the popup.</p>
+                                <p className="text-slate-500 dark:text-gpt-secondary text-sm mt-1">Customize the quick actions available in the popup. Use <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded border border-blue-100 dark:border-blue-800 font-mono text-xs">{`\${text}`}</span> as a placeholder for selected text.</p>
                             </div>
                             <button
                                 onClick={handleAddPrompt}
@@ -756,114 +783,133 @@ export default function Options() {
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4">
+                        <div className="grid grid-cols-1 gap-3">
                             {config.prompts.map((prompt, idx) => (
-                                <div key={prompt.id} className="group bg-white dark:bg-gpt-sidebar border border-slate-200 dark:border-gpt-hover rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-300 relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-
-                                    <div className="flex flex-col gap-3 mb-4">
-                                        <div className="flex justify-between items-start gap-4">
-                                            <div className="flex-1">
-                                                <label className="block text-xs font-bold text-slate-400 dark:text-gpt-secondary mb-1 uppercase tracking-wider">Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={prompt.name}
-                                                    onChange={(e) => handleUpdatePrompt(idx, 'name', e.target.value)}
-                                                    className="text-base font-bold text-slate-900 dark:text-gpt-text bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-gpt-hover focus:border-blue-500 outline-none px-0 py-1 transition-colors w-full"
-                                                    placeholder="Prompt Name"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => handleRemovePrompt(idx)}
-                                                className="text-slate-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                                                title="Delete Prompt"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
+                                <div
+                                    key={prompt.id}
+                                    className={clsx(
+                                        "group bg-white dark:bg-gpt-sidebar border border-slate-200 dark:border-gpt-hover rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 relative",
+                                        draggedPromptIdx === idx && "opacity-40 scale-[0.99] ring-2 ring-blue-500 rotate-[1deg]"
+                                    )}
+                                    draggable
+                                    onDragStart={(e) => handlePromptDragStart(e, idx)}
+                                    onDragOver={(e) => handlePromptDragOver(e, idx)}
+                                    onDragEnd={handlePromptDragEnd}
+                                >
+                                    {/* Header Row */}
+                                    <div className="flex items-center gap-3 mb-3">
+                                        {/* Drag Handle */}
+                                        <div
+                                            className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors p-1 -ml-1"
+                                            title="Drag to reorder"
+                                        >
+                                            <GripVertical size={16} />
                                         </div>
 
-                                        <div className="flex flex-wrap items-center gap-6">
-                                            <div className="flex items-center gap-4">
-                                                <label className="flex items-center gap-2 cursor-pointer group/checkbox">
-                                                    <div className="relative">
+                                        {/* Name Input */}
+                                        <div className="flex-1 min-w-0">
+                                            <input
+                                                type="text"
+                                                value={prompt.name}
+                                                onChange={(e) => handleUpdatePrompt(idx, 'name', e.target.value)}
+                                                className="w-full text-base font-bold text-slate-800 dark:text-gray-100 bg-transparent border-none focus:ring-0 p-0 placeholder:text-slate-300 dark:placeholder:text-gray-600 truncate"
+                                                placeholder="Untitled Prompt"
+                                            />
+                                        </div>
+
+                                        {/* Controls Container */}
+                                        <div className="flex items-center gap-4 bg-slate-50 dark:bg-gray-800/50 rounded-lg px-3 py-1.5 border border-slate-100 dark:border-white/5">
+                                            {/* Toggles */}
+                                            <div className="flex items-center gap-4 border-r border-slate-200 dark:border-white/10 pr-4">
+                                                <label className="flex items-center gap-2 cursor-pointer group/toggle" title="Only show for images">
+                                                    <div className="relative inline-flex items-center">
                                                         <input
                                                             type="checkbox"
                                                             checked={!!prompt.onlyImage}
                                                             onChange={(e) => handleUpdatePrompt(idx, 'onlyImage', e.target.checked)}
                                                             className="sr-only peer"
                                                         />
-                                                        <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                                                        <div className="w-8 h-4.5 bg-slate-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-purple-500 dark:peer-checked:bg-purple-600 peer-focus:outline-none transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-3.5 shadow-inner"></div>
                                                     </div>
-                                                    <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Only Image</span>
+                                                    <span className={clsx("text-xs font-medium transition-colors", prompt.onlyImage ? "text-purple-600 dark:text-purple-400" : "text-slate-400 dark:text-gray-500 group-hover/toggle:text-slate-600 dark:group-hover/toggle:text-gray-400")}>Image</span>
                                                 </label>
-                                                <label className="flex items-center gap-2 cursor-pointer group/checkbox">
-                                                    <div className="relative">
+
+                                                <label className="flex items-center gap-2 cursor-pointer group/toggle" title="Auto-submit when clicked">
+                                                    <div className="relative inline-flex items-center">
                                                         <input
                                                             type="checkbox"
                                                             checked={!!prompt.immediate}
                                                             onChange={(e) => handleUpdatePrompt(idx, 'immediate', e.target.checked)}
                                                             className="sr-only peer"
                                                         />
-                                                        <div className="w-9 h-5 bg-slate-200 dark:bg-gpt-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                                        <div className="w-8 h-4.5 bg-slate-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-blue-500 dark:peer-checked:bg-blue-600 peer-focus:outline-none transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-3.5 shadow-inner"></div>
                                                     </div>
-                                                    <span className="text-xs font-medium text-slate-500 dark:text-gpt-secondary group-hover/checkbox:text-slate-700 dark:group-hover/checkbox:text-gpt-text">Instant Submit</span>
+                                                    <span className={clsx("text-xs font-medium transition-colors", prompt.immediate ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-gray-500 group-hover/toggle:text-slate-600 dark:group-hover/toggle:text-gray-400")}>Instant</span>
                                                 </label>
                                             </div>
 
-                                            {/* Prompt Hotkey Recorder */}
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs font-bold text-slate-400 dark:text-gpt-secondary uppercase tracking-wider">Hotkey:</span>
-                                                <div
-                                                    className={clsx(
-                                                        "h-8 px-3 flex items-center justify-center border rounded-lg text-xs font-mono font-medium cursor-pointer transition-all select-none min-w-[100px]",
-                                                        recordingTarget === prompt.id
-                                                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/20"
-                                                            : "border-slate-200 dark:border-gpt-hover bg-slate-50 dark:bg-gpt-input text-slate-700 dark:text-gpt-text hover:border-slate-300 dark:hover:border-gpt-text"
-                                                    )}
-                                                    onClick={() => setRecordingTarget(prompt.id)}
-                                                    onKeyDown={handleHotkeyKeyDown}
-                                                    tabIndex={0}
-                                                    onBlur={() => setRecordingTarget(null)}
-                                                    title="Click to record hotkey"
-                                                >
-                                                    {recordingTarget === prompt.id ? (
-                                                        <span className="animate-pulse">Press keys...</span>
-                                                    ) : prompt.hotkey ? (
-                                                        <div className="flex items-center gap-1">
-                                                            {prompt.hotkey.modifiers.map(m => (
-                                                                <span key={m} className="capitalize">{m}+</span>
-                                                            ))}
-                                                            <span className="capitalize">{prompt.hotkey.key}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-slate-400 italic">None</span>
-                                                    )}
-                                                </div>
-                                                {prompt.hotkey && (
-                                                    <button
-                                                        onClick={() => handleUpdatePrompt(idx, 'hotkey', null)}
-                                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                                        title="Clear hotkey"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
+                                            {/* Hotkey */}
+                                            <div
+                                                className={clsx(
+                                                    "flex items-center gap-1.5 cursor-pointer select-none transition-all",
+                                                    recordingTarget === prompt.id ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                )}
+                                                onClick={() => setRecordingTarget(prompt.id)}
+                                                onKeyDown={handleHotkeyKeyDown}
+                                                tabIndex={0}
+                                                onBlur={() => setRecordingTarget(null)}
+                                                title="Click to set hotkey"
+                                            >
+                                                {recordingTarget === prompt.id ? (
+                                                    <span className="text-xs font-medium text-blue-500 animate-pulse">Press keys...</span>
+                                                ) : prompt.hotkey ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 h-5 text-[10px] font-sans font-semibold text-slate-500 dark:text-gray-400 bg-white dark:bg-gray-800 border-b-2 border border-slate-200 dark:border-gray-700 rounded">
+                                                            {prompt.hotkey.modifiers.map(m => (m === 'control' ? 'Ctrl' : m === 'command' ? 'Cmd' : m.charAt(0).toUpperCase() + m.slice(1))).join('+')}
+                                                        </kbd>
+                                                        <span className="text-[10px] text-slate-400 dark:text-gray-600">+</span>
+                                                        <kbd className="inline-flex items-center justify-center min-w-[20px] px-1 h-5 text-[10px] font-sans font-semibold text-slate-600 dark:text-gray-300 bg-white dark:bg-gray-700 border-b-2 border border-slate-200 dark:border-gray-600 rounded">
+                                                            {prompt.hotkey.key.toUpperCase()}
+                                                        </kbd>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleUpdatePrompt(idx, 'hotkey', null); }}
+                                                            className="ml-1 text-slate-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 text-xs font-medium text-slate-400 dark:text-gray-600 hover:text-slate-600 dark:hover:text-gray-400">
+                                                        <Keyboard size={14} />
+                                                        <span className="hidden sm:inline">Add Hotkey</span>
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
+
+                                        {/* Delete */}
+                                        <button
+                                            onClick={() => handleRemovePrompt(idx)}
+                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:text-gray-600 dark:hover:text-red-400 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                            title="Delete Prompt"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Template Content</label>
+                                    {/* Content Textarea */}
+                                    <div className="relative group/input">
                                         <textarea
                                             value={prompt.content}
                                             onChange={(e) => handleUpdatePrompt(idx, 'content', e.target.value)}
-                                            className="w-full text-sm text-slate-600 dark:text-gpt-text bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-xl p-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none min-h-[80px] resize-y transition-all font-mono"
-                                            placeholder="Prompt content..."
+                                            className="w-full text-sm text-slate-700 dark:text-gray-300 bg-slate-50 dark:bg-[#1a1b1e] border-none rounded-lg p-3 pl-4 focus:ring-1 focus:ring-blue-500/50 dark:focus:ring-blue-500/30 transition-all font-mono min-h-[90px] resize-y placeholder:text-slate-400 dark:placeholder:text-gray-600 leading-relaxed"
+                                            placeholder="Enter your prompt here..."
                                         />
-                                        <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2 flex items-center gap-1.5">
-                                            <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded border border-blue-100 dark:border-blue-800 font-mono text-[10px]">{`\${text}`}</span>
-                                            will be replaced by your selected text.
-                                        </p>
+                                        {!prompt.content && (
+                                            <div className="absolute top-3 left-4 pointer-events-none text-sm text-slate-400 dark:text-gray-600 font-mono">
+                                                Use <span className="text-blue-500 dark:text-blue-400 font-bold">{"${text}"}</span> for selection
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
