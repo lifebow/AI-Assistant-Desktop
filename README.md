@@ -47,6 +47,14 @@ AI models can search the web for up-to-date information:
 - **Load Balancing**: Randomly selects one of your stored keys for each request to distribute usage
 - Automatic key rotation when quota is exhausted
 
+### 🔄 Backup Models
+- Configure multiple alternative models from any provider
+- **Quick Model Switching**: Click "Try with another model" below any AI response to retry with a different model
+- **Flexible Workflow**: Use fast models (e.g., `gemini-3-flash`) for daily tasks, then instantly try powerful models (e.g., `gemini-3-pro`) when you need better results
+- **No Context Loss**: The same query is automatically sent to the backup model without retyping
+- **Smart Prioritization**: Current provider appears first in the selection list
+- **Custom Models Supported**: Add any model from fetched lists or enter custom model IDs
+
 ### ⌨️ Keyboard Shortcuts
 - **Global Popup Hotkey**: `Ctrl+Shift+Y` (Windows/Linux) or `Command+Shift+Y` (Mac)
 - **Custom Crop Hotkey**: Configure your own hotkey for screen cropping
@@ -129,6 +137,25 @@ AI models can search the web for up-to-date information:
 3. The selected content will appear in the popup
 4. Select a **Preset Instruction** or type a custom question
 5. Click **Ask AI** or press Enter
+
+### Using Backup Models
+
+1. **Configure Backup Models** (one-time setup):
+   - Go to **Settings** → **Providers** tab
+   - Scroll to the **Backup Models** section
+   - Click **"Add Backup Model"**
+   - Select a provider from the dropdown (your current provider appears first)
+   - **Models are automatically fetched** when you select a provider
+   - Choose a model from the list, or toggle to "Custom Model" to enter any model ID manually
+   - Click **Add Model**
+   - Repeat to add multiple backup models from different providers
+
+2. **Try with Another Model**:
+   - After receiving any AI response, you'll see a **"Try with another model"** button below it
+   - Click the button to see your configured backup models
+   - Select any backup model from the dropdown
+   - The current response will be removed and the same query will be sent to the selected model
+   - Your default model selection remains unchanged for future queries
 
 ### Screen Cropping
 

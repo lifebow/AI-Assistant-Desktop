@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { type AppConfig, type ChatMessage, type PromptTemplate, type Provider } from '../lib/types';
 import { callApi, fetchModels } from '../lib/api';
-import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, ChevronRight, Check, X, Copy, PauseCircle, SquarePen, Clock, Globe, Link2, ExternalLink, Square } from 'lucide-react';
+import { Send, Settings, Sparkles, Loader2, User, Bot, Trash2, Zap, Image as ImageIcon, ChevronDown, ChevronRight, Check, X, Copy, PauseCircle, SquarePen, Clock, Globe, Link2, ExternalLink, Square, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -64,8 +64,10 @@ export default function ChatInterface({
     const [, forceUpdate] = useState(0); // Force re-render for timer updates
     const [sourcesModal, setSourcesModal] = useState<{ sources: Array<{ title: string; url: string; snippet?: string }>; query: string } | null>(null);
     const [imageZoomOpen, setImageZoomOpen] = useState(false);
+    const [retryModelMenuOpen, setRetryModelMenuOpen] = useState<number | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const retryModelMenuRef = useRef<HTMLDivElement>(null);
     const modelMenuRef = useRef<HTMLDivElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [modelSearch, setModelSearch] = useState('');
@@ -241,6 +243,9 @@ export default function ChatInterface({
             if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
                 setIsModelMenuOpen(false);
             }
+            if (retryModelMenuRef.current && !retryModelMenuRef.current.contains(event.target as Node)) {
+                setRetryModelMenuOpen(null);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -388,6 +393,196 @@ export default function ChatInterface({
             await setStorage(newConfig);
         }
         setIsModelMenuOpen(false);
+    };
+
+    const handleRetryWithModel = async (messageIndex: number, provider: string, model: string) => {
+        // Close the retry menu
+        setRetryModelMenuOpen(null);
+
+        // Remove the assistant message being retried (keep all messages before it)
+        const newMessages = messages.slice(0, messageIndex);
+        setMessages(newMessages);
+
+        // Temporarily switch to the backup model
+        const previousProvider = config.selectedProvider;
+        const previousModel = config.selectedModel[previousProvider];
+
+        const tempConfig = {
+            ...config,
+            selectedProvider: provider,
+            selectedModel: {
+                ...config.selectedModel,
+                [provider]: model
+            }
+        };
+        setConfig(tempConfig);
+
+        setLoading(true);
+        setError('');
+
+        // Track response time
+        const startTime = Date.now();
+
+        // Abort previous if any
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
+        // Add placeholder assistant message
+        const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
+        setMessages([...newMessages, assistantMsg]);
+
+        // Scroll to bottom when retrying
+        scrollToBottom();
+
+        let accumulatedText = '';
+        let accumulatedReasoning = '';
+        let isInNewMessage = false;
+
+        try {
+            const res = await callApi(newMessages, tempConfig, (chunk) => {
+                if (isInNewMessage) {
+                    // Append to the new (follow-up) message
+                    accumulatedText += chunk;
+                    const currentResponseTime = Date.now() - startTime;
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.content = accumulatedText;
+                            last.responseTime = currentResponseTime;
+                        }
+                        return updated;
+                    });
+                } else {
+                    // Append to the initial message
+                    accumulatedText += chunk;
+                    const currentResponseTime = Date.now() - startTime;
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.content = accumulatedText;
+                            last.responseTime = currentResponseTime;
+                        }
+                        return updated;
+                    });
+                }
+            }, abortControllerRef.current.signal, (searchStatus) => {
+                if (searchStatus.startNewMessage && !isInNewMessage) {
+                    // Create a new message for the follow-up response (only once)
+                    isInNewMessage = true;
+                    accumulatedText = ''; // Reset for new message
+                    accumulatedReasoning = ''; // Reset reasoning for new message
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        // Update the previous message's web search info only (don't touch content)
+                        const prevLast = updated[updated.length - 1];
+                        if (prevLast && prevLast.role === 'assistant') {
+                            prevLast.webSearch = {
+                                query: searchStatus.query,
+                                result: searchStatus.result || '',
+                                isSearching: false,
+                                sources: searchStatus.sources
+                            };
+                        }
+                        // Add new assistant message for the follow-up (no webSearch on this one)
+                        return [...updated, { role: 'assistant', content: '' }];
+                    });
+                } else if (!isInNewMessage) {
+                    // Only update web search info if we haven't created a new message yet
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.webSearch = {
+                                query: searchStatus.query,
+                                result: searchStatus.result || '',
+                                isSearching: searchStatus.isSearching,
+                                sources: searchStatus.sources
+                            };
+                        }
+                        return updated;
+                    });
+                }
+                // If isInNewMessage is true and it's not startNewMessage, skip (don't update the new message's webSearch)
+            }, (reasoningChunk) => {
+                // Handle reasoning content (from models like DeepSeek)
+                accumulatedReasoning += reasoningChunk;
+                const msgIndex = newMessages.length; // Index of the assistant message
+
+                // Start timer when first reasoning chunk arrives
+                if (accumulatedReasoning === reasoningChunk) {
+                    const startTime = Date.now();
+                    reasoningStartTimeRef.current[msgIndex] = startTime;
+                    setReasoningStartTime(prev => ({ ...prev, [msgIndex]: startTime }));
+                }
+
+                setMessages(prev => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last && last.role === 'assistant') {
+                        last.reasoning = accumulatedReasoning;
+                    }
+                    return updated;
+                });
+            });
+
+            if (res.error) {
+                setError(res.error);
+            }
+        } catch (err: any) {
+            if (err.name === 'AbortError') {
+                // Aborted - still record response time for interrupted messages
+                const responseTime = Date.now() - startTime;
+                const msgIndex = newMessages.length;
+
+                // Calculate and store final reasoning time if reasoning was happening
+                if (reasoningStartTimeRef.current[msgIndex]) {
+                    const finalElapsed = Math.floor((Date.now() - reasoningStartTimeRef.current[msgIndex]) / 1000);
+                    setReasoningElapsed(prev => ({ ...prev, [msgIndex]: finalElapsed }));
+
+                    // Also save to the message itself for persistence
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.interrupted = true;
+                            last.responseTime = responseTime;
+                            last.reasoningTime = finalElapsed;
+                        }
+                        return updated;
+                    });
+                } else {
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.interrupted = true;
+                            last.responseTime = responseTime;
+                        }
+                        return updated;
+                    });
+                }
+            } else {
+                setError(err.message);
+            }
+        } finally {
+            setLoading(false);
+            abortControllerRef.current = null;
+
+            // Restore original model selection
+            const restoredConfig = {
+                ...config,
+                selectedProvider: previousProvider,
+                selectedModel: {
+                    ...config.selectedModel,
+                    [previousProvider]: previousModel
+                }
+            };
+            setConfig(restoredConfig);
+        }
     };
 
     const handleSubmit = async (overrideInstruction?: string) => {
@@ -1065,11 +1260,78 @@ export default function ChatInterface({
                                     {copiedIndex === idx ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
                                 </button>
                             )}
-                            {/* Response time - shown after copy button */}
-                            {msg.role === 'assistant' && msg.responseTime !== undefined && (
-                                <div className="flex items-center gap-1 mt-2 text-[10px] text-slate-400 dark:text-slate-500">
-                                    <Clock size={10} />
-                                    <span>{(msg.responseTime / 1000).toFixed(1)}s</span>
+                            {/* Response time and retry button row */}
+                            {msg.role === 'assistant' && msg.content && !(loading && idx === messages.length - 1) && (
+                                <div className="flex items-center gap-2 mt-2">
+                                    {/* Response time */}
+                                    {msg.responseTime !== undefined && (
+                                        <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500">
+                                            <Clock size={10} />
+                                            <span>{(msg.responseTime / 1000).toFixed(1)}s</span>
+                                        </div>
+                                    )}
+                                    {/* Try with another model button */}
+                                    <div className="relative" ref={retryModelMenuOpen === idx ? retryModelMenuRef : null}>
+                                        <button
+                                            onClick={() => setRetryModelMenuOpen(retryModelMenuOpen === idx ? null : idx)}
+                                            className="p-1 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                                            title="Try with another model"
+                                        >
+                                            <RefreshCw size={12} />
+                                        </button>
+
+                                        {/* Backup models dropdown */}
+                                        {retryModelMenuOpen === idx && config.backupModels && (
+                                            <div className="absolute bottom-full left-0 mb-1 w-56 max-h-64 overflow-y-auto bg-white dark:bg-gpt-sidebar border border-slate-200 dark:border-gpt-hover rounded-xl shadow-xl z-50 custom-scrollbar">
+                                                <div className="py-1">
+                                                    {(() => {
+                                                        // Collect all backup models from all providers
+                                                        const allBackups = Object.entries(config.backupModels).flatMap(([provider, models]) =>
+                                                            models.map(m => ({ ...m, fromProvider: provider }))
+                                                        );
+
+                                                        if (allBackups.length === 0) {
+                                                            return (
+                                                                <div className="px-4 py-3 text-xs text-slate-500 text-center">
+                                                                    No backup models configured.<br />
+                                                                    <span className="text-[10px]">Add them in Settings</span>
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        // Group by provider
+                                                        const groupedBackups = allBackups.reduce((acc, backup) => {
+                                                            if (!acc[backup.provider]) {
+                                                                acc[backup.provider] = [];
+                                                            }
+                                                            acc[backup.provider].push(backup);
+                                                            return acc;
+                                                        }, {} as Record<string, typeof allBackups>);
+
+                                                        return Object.entries(groupedBackups).map(([provider, models]) => (
+                                                            <div key={provider} className="mb-1 last:mb-0">
+                                                                <div className="px-3 py-1 text-[10px] font-bold text-slate-400 dark:text-gpt-secondary uppercase tracking-wider">
+                                                                    {(() => {
+                                                                        const custom = config.customProviders?.find(cp => cp.id === provider);
+                                                                        return custom ? custom.name : (ProviderDisplayNames[provider] || provider);
+                                                                    })()}
+                                                                </div>
+                                                                {models.map((backup, backupIdx) => (
+                                                                    <button
+                                                                        key={`${backup.provider}-${backup.model}-${backupIdx}`}
+                                                                        onClick={() => handleRetryWithModel(idx, backup.provider, backup.model)}
+                                                                        className="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-gpt-text hover:bg-slate-50 dark:hover:bg-gpt-hover transition-colors"
+                                                                    >
+                                                                        <div className="truncate">{backup.model}</div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        ));
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>

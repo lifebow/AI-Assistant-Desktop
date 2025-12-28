@@ -67,6 +67,7 @@ export interface AppConfig {
   webSearchProvider: 'perplexity' | 'kagi' | 'google'; // Which provider to use for web search
   kagiSession?: string; // Kagi session cookie for web search
   alwaysExpandReasoning?: boolean; // Always expand reasoning content
+  backupModels?: Record<string, Array<{ provider: string; model: string }>>;  // Backup models for quick retry
 }
 
 export const DEFAULT_PROMPTS: PromptTemplate[] = [
@@ -108,5 +109,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   popupSize: { width: 450, height: 600 },
   webSearchProvider: 'perplexity',
   kagiSession: '',
-  alwaysExpandReasoning: false
+  alwaysExpandReasoning: false,
+  backupModels: {}
 };

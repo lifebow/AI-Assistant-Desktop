@@ -32,6 +32,10 @@ export default function Options() {
     const [newProviderName, setNewProviderName] = useState('');
     const [newProviderUrl, setNewProviderUrl] = useState('');
     const [draggedPromptIdx, setDraggedPromptIdx] = useState<number | null>(null);
+    const [addingBackupModel, setAddingBackupModel] = useState(false);
+    const [backupModelProvider, setBackupModelProvider] = useState<string>('');
+    const [backupModelName, setBackupModelName] = useState<string>('');
+    const [isBackupCustomModel, setIsBackupCustomModel] = useState(false);
 
     const allProviders = [...Providers, ...(config.customProviders || []).map(p => p.id)];
 
@@ -52,6 +56,16 @@ export default function Options() {
             setLoading(false);
         });
     }, []);
+
+    // Auto-fetch models when backup model provider changes
+    useEffect(() => {
+        if (addingBackupModel && backupModelProvider) {
+            // Only fetch if models haven't been fetched yet and provider has API keys
+            if (!fetchedModels[backupModelProvider] && config.apiKeys[backupModelProvider]?.length > 0 && backupModelProvider !== 'anthropic') {
+                handleFetchModels(backupModelProvider, true);
+            }
+        }
+    }, [backupModelProvider, addingBackupModel]);
 
     const saveConfig = async (newConfig: AppConfig) => {
         setConfig(newConfig);
@@ -580,6 +594,197 @@ export default function Options() {
                             </div>
                         </div>
 
+                        {/* Backup Models Card */}
+                        <div className="bg-white dark:bg-gpt-sidebar rounded-2xl shadow-sm border border-slate-200 dark:border-gpt-hover p-6">
+                            <h3 className="text-base font-bold text-slate-900 dark:text-gpt-text mb-2 flex items-center gap-2">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                Backup Models
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-gpt-secondary mb-4">
+                                Configure alternative models to try when you need a different perspective or better results. Click "Try with another model" below any response to retry with these backup models.
+                            </p>
+
+                            <div className="space-y-3">
+                                {(() => {
+                                    const backupModels = config.backupModels || {};
+                                    const allBackups = Object.entries(backupModels).flatMap(([provider, models]) =>
+                                        models.map((m, idx) => ({ ...m, provider, idx, key: `${provider}-${m.model}-${idx}` }))
+                                    );
+
+                                    return (
+                                        <>
+                                            {allBackups.length === 0 && (
+                                                <div className="text-sm text-slate-400 italic bg-slate-50 dark:bg-gpt-input p-4 rounded-lg border border-slate-100 dark:border-gpt-hover text-center">
+                                                    No backup models configured yet.
+                                                </div>
+                                            )}
+                                            {allBackups.map((backup) => (
+                                                <div key={backup.key} className="flex items-center gap-2 group bg-slate-50 dark:bg-gpt-input p-3 rounded-lg border border-slate-200 dark:border-gpt-hover">
+                                                    <div className="flex-1">
+                                                        <div className="text-xs font-bold text-slate-700 dark:text-gpt-text">
+                                                            {backup.model}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 dark:text-gpt-secondary">
+                                                            {(() => {
+                                                                const custom = config.customProviders?.find(cp => cp.id === backup.provider);
+                                                                return custom ? custom.name : (ProviderDisplayNames[backup.provider as Provider] || backup.provider);
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            const newBackups = { ...config.backupModels };
+                                                            newBackups[backup.provider] = newBackups[backup.provider].filter((_, i) => i !== backup.idx);
+                                                            if (newBackups[backup.provider].length === 0) {
+                                                                delete newBackups[backup.provider];
+                                                            }
+                                                            saveConfig({ ...config, backupModels: newBackups });
+                                                        }}
+                                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                        title="Remove backup model"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+
+                                            {/* Add backup model */}
+                                            {!addingBackupModel ? (
+                                                <button
+                                                    onClick={() => {
+                                                        setAddingBackupModel(true);
+                                                        setBackupModelProvider(config.selectedProvider);
+                                                        setBackupModelName('');
+                                                        setIsBackupCustomModel(false);
+                                                        // Auto-fetch models for current provider if not already fetched
+                                                        if (!fetchedModels[config.selectedProvider] && config.apiKeys[config.selectedProvider]?.length > 0) {
+                                                            handleFetchModels(config.selectedProvider, true);
+                                                        }
+                                                    }}
+                                                    className="w-full mt-2 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium text-sm rounded-lg border border-blue-200 dark:border-blue-800 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Plus size={16} />
+                                                    Add Backup Model
+                                                </button>
+                                            ) : (
+                                                <div className="mt-2 p-4 bg-slate-50 dark:bg-gpt-input rounded-lg border border-slate-200 dark:border-gpt-hover space-y-3">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Provider</label>
+                                                        <select
+                                                            value={backupModelProvider}
+                                                            onChange={(e) => {
+                                                                setBackupModelProvider(e.target.value);
+                                                                setBackupModelName('');
+                                                                setIsBackupCustomModel(false);
+                                                            }}
+                                                            className="w-full px-3 py-2 text-sm bg-white dark:bg-gpt-main border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-gpt-text"
+                                                        >
+                                                            {/* Current provider first */}
+                                                            {(() => {
+                                                                const currentProvider = config.selectedProvider;
+                                                                const currentName = getProviderName(currentProvider);
+                                                                return <option key={currentProvider} value={currentProvider}>{currentName} (Current)</option>;
+                                                            })()}
+                                                            {/* Other providers */}
+                                                            {allProviders.filter(p => p !== config.selectedProvider).map(provider => (
+                                                                <option key={provider} value={provider}>{getProviderName(provider)}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1.5">
+                                                            <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary uppercase tracking-wider">Model</label>
+                                                            {backupModelProvider !== 'anthropic' && (
+                                                                <button
+                                                                    onClick={() => handleFetchModels(backupModelProvider, true)}
+                                                                    className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 bg-blue-50 dark:bg-gpt-hover px-2 py-0.5 rounded hover:bg-blue-100 transition-colors"
+                                                                    disabled={fetchingModels[backupModelProvider]}
+                                                                >
+                                                                    {fetchingModels[backupModelProvider] ? <RefreshCw size={10} className="animate-spin" /> : <List size={10} />}
+                                                                    {fetchingModels[backupModelProvider] ? 'Loading...' : 'Refresh List'}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="relative">
+                                                            {fetchedModels[backupModelProvider]?.length > 0 && !isBackupCustomModel ? (
+                                                                <SearchableSelect
+                                                                    value={backupModelName}
+                                                                    options={fetchedModels[backupModelProvider]}
+                                                                    onChange={(value) => setBackupModelName(value)}
+                                                                    onCustomClick={() => setIsBackupCustomModel(true)}
+                                                                    placeholder="Select a model..."
+                                                                />
+                                                            ) : (
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={backupModelName}
+                                                                        onChange={(e) => setBackupModelName(e.target.value)}
+                                                                        placeholder="e.g. gpt-4o, claude-3.5-sonnet..."
+                                                                        className="w-full px-3 py-2.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-gpt-text"
+                                                                    />
+                                                                    {fetchedModels[backupModelProvider]?.length > 0 && (
+                                                                        <button
+                                                                            onClick={() => setIsBackupCustomModel(false)}
+                                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded"
+                                                                        >
+                                                                            Back to List
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex gap-2 pt-1">
+                                                        <button
+                                                            onClick={() => {
+                                                                setAddingBackupModel(false);
+                                                                setBackupModelProvider('');
+                                                                setBackupModelName('');
+                                                            }}
+                                                            className="flex-1 px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-gpt-hover rounded-lg transition-colors"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!backupModelProvider || !backupModelName.trim()) return;
+
+                                                                const newBackups = { ...config.backupModels };
+                                                                if (!newBackups[backupModelProvider]) {
+                                                                    newBackups[backupModelProvider] = [];
+                                                                }
+
+                                                                // Check if already exists
+                                                                const exists = newBackups[backupModelProvider].some(m => m.provider === backupModelProvider && m.model === backupModelName);
+                                                                if (!exists) {
+                                                                    newBackups[backupModelProvider].push({ provider: backupModelProvider, model: backupModelName });
+                                                                    saveConfig({ ...config, backupModels: newBackups });
+                                                                }
+
+                                                                setAddingBackupModel(false);
+                                                                setBackupModelProvider('');
+                                                                setBackupModelName('');
+                                                            }}
+                                                            disabled={!backupModelProvider || !backupModelName.trim()}
+                                                            className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium text-sm rounded-lg transition-colors disabled:cursor-not-allowed"
+                                                        >
+                                                            Add Model
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <p className="text-xs text-slate-400 dark:text-gpt-secondary mt-2">
+                                                Select a provider and model from above. You can add multiple backup models to switch between them quickly.
+                                            </p>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+
                         <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 flex gap-3">
                             <div className="text-blue-600 dark:text-blue-400 mt-0.5"><Cpu size={18} /></div>
                             <div className="text-sm text-blue-900 dark:text-blue-300">
@@ -1084,6 +1289,6 @@ export default function Options() {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }
