@@ -772,6 +772,107 @@ export default function ChatInterface({
                 });
             });
 
+            // Check for multimodal error when using a model that doesn't support images
+            if (res.error && messagePayload.image) {
+                const isMultimodalError = res.error.toLowerCase().includes('content must be a string') ||
+                    res.error.toLowerCase().includes('must be a string') ||
+                    res.error.includes('.content must be a string');
+
+                if (isMultimodalError) {
+                    // Fallback to default config - model doesn't support images
+                    console.log('Prompt model does not support images, falling back to default model');
+
+                    // Reset accumulated text for retry
+                    accumulatedText = '';
+                    accumulatedReasoning = '';
+                    isInNewMessage = false;
+
+                    // Reset the assistant message
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        const last = updated[updated.length - 1];
+                        if (last && last.role === 'assistant') {
+                            last.content = '';
+                            last.reasoning = undefined;
+                        }
+                        return updated;
+                    });
+
+                    // Create new abort controller for retry
+                    abortControllerRef.current = new AbortController();
+
+                    // Retry with original config (before any prompt model overrides)
+                    const fallbackRes = await callApi(newMessages, initialConfig, (chunk) => {
+                        accumulatedText += chunk;
+                        const currentResponseTime = Date.now() - startTime;
+                        setMessages(prev => {
+                            const updated = [...prev];
+                            const last = updated[updated.length - 1];
+                            if (last && last.role === 'assistant') {
+                                last.content = accumulatedText;
+                                last.responseTime = currentResponseTime;
+                            }
+                            return updated;
+                        });
+                    }, abortControllerRef.current.signal, (searchStatus) => {
+                        if (searchStatus.startNewMessage && !isInNewMessage) {
+                            isInNewMessage = true;
+                            accumulatedText = '';
+                            accumulatedReasoning = '';
+                            setMessages(prev => {
+                                const updated = [...prev];
+                                const prevLast = updated[updated.length - 1];
+                                if (prevLast && prevLast.role === 'assistant') {
+                                    prevLast.webSearch = {
+                                        query: searchStatus.query,
+                                        result: searchStatus.result || '',
+                                        isSearching: false,
+                                        sources: searchStatus.sources
+                                    };
+                                }
+                                return [...updated, { role: 'assistant', content: '' }];
+                            });
+                        } else if (!isInNewMessage) {
+                            setMessages(prev => {
+                                const updated = [...prev];
+                                const last = updated[updated.length - 1];
+                                if (last && last.role === 'assistant') {
+                                    last.webSearch = {
+                                        query: searchStatus.query,
+                                        result: searchStatus.result || '',
+                                        isSearching: searchStatus.isSearching,
+                                        sources: searchStatus.sources
+                                    };
+                                }
+                                return updated;
+                            });
+                        }
+                    }, (reasoningChunk) => {
+                        accumulatedReasoning += reasoningChunk;
+                        const msgIndex = newMessages.length;
+                        if (accumulatedReasoning === reasoningChunk) {
+                            const reasoningStart = Date.now();
+                            reasoningStartTimeRef.current[msgIndex] = reasoningStart;
+                            setReasoningStartTime(prev => ({ ...prev, [msgIndex]: reasoningStart }));
+                        }
+                        setMessages(prev => {
+                            const updated = [...prev];
+                            const last = updated[updated.length - 1];
+                            if (last && last.role === 'assistant') {
+                                last.reasoning = accumulatedReasoning;
+                            }
+                            return updated;
+                        });
+                    });
+
+                    if (fallbackRes.error) {
+                        setError(fallbackRes.error);
+                    }
+                    // Don't show fallback notice - just work silently
+                    return;
+                }
+            }
+
             if (res.error) {
                 setError(res.error);
             }
