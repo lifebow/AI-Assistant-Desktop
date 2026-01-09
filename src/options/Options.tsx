@@ -36,6 +36,11 @@ export default function Options() {
     const [backupModelProvider, setBackupModelProvider] = useState<string>('');
     const [backupModelName, setBackupModelName] = useState<string>('');
     const [isBackupCustomModel, setIsBackupCustomModel] = useState(false);
+    // State for prompt model editing
+    const [editingPromptModel, setEditingPromptModel] = useState<number | null>(null);
+    const [promptModelProvider, setPromptModelProvider] = useState<string>('');
+    const [promptModelName, setPromptModelName] = useState<string>('');
+    const [isPromptCustomModel, setIsPromptCustomModel] = useState(false);
 
     const allProviders = [...Providers, ...(config.customProviders || []).map(p => p.id)];
 
@@ -66,6 +71,16 @@ export default function Options() {
             }
         }
     }, [backupModelProvider, addingBackupModel]);
+
+    // Auto-fetch models when prompt model provider changes
+    useEffect(() => {
+        if (editingPromptModel !== null && promptModelProvider) {
+            // Only fetch if models haven't been fetched yet and provider has API keys
+            if (!fetchedModels[promptModelProvider] && config.apiKeys[promptModelProvider]?.length > 0 && promptModelProvider !== 'anthropic') {
+                handleFetchModels(promptModelProvider, true);
+            }
+        }
+    }, [promptModelProvider, editingPromptModel]);
 
     const saveConfig = async (newConfig: AppConfig) => {
         setConfig(newConfig);
@@ -1133,6 +1148,158 @@ export default function Options() {
                                             <div className="absolute top-3 left-4 pointer-events-none text-sm text-slate-400 dark:text-gray-600 font-mono">
                                                 Use <span className="text-blue-500 dark:text-blue-400 font-bold">{"${text}"}</span> for selection
                                             </div>
+                                        )}
+                                    </div>
+
+                                    {/* Model Selector (Optional) */}
+                                    <div className="mt-3">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-gpt-secondary">
+                                                <Cpu size={14} />
+                                                <span className="font-medium">Model Override:</span>
+                                            </div>
+                                            {prompt.model && (
+                                                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-2.5 py-1.5">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-medium text-green-700 dark:text-green-400 truncate max-w-[200px]">
+                                                            {prompt.model.modelName}
+                                                        </span>
+                                                        <span className="text-[10px] text-green-600/70 dark:text-green-500/70">
+                                                            {(() => {
+                                                                const custom = config.customProviders?.find(cp => cp.id === prompt.model?.provider);
+                                                                return custom ? custom.name : (ProviderDisplayNames[prompt.model?.provider as Provider] || prompt.model?.provider);
+                                                            })()}
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleUpdatePrompt(idx, 'model', null)}
+                                                        className="ml-1 text-green-500 hover:text-red-500 transition-colors"
+                                                        title="Clear model override"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {editingPromptModel === idx ? (
+                                            <div className="p-3 bg-slate-50 dark:bg-gpt-input rounded-lg border border-slate-200 dark:border-gpt-hover space-y-3">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Provider</label>
+                                                    <select
+                                                        value={promptModelProvider}
+                                                        onChange={(e) => {
+                                                            setPromptModelProvider(e.target.value);
+                                                            setPromptModelName('');
+                                                            setIsPromptCustomModel(false);
+                                                        }}
+                                                        className="w-full px-3 py-2 text-sm bg-white dark:bg-gpt-main border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-gpt-text"
+                                                    >
+                                                        {/* Current provider first */}
+                                                        {(() => {
+                                                            const currentProvider = config.selectedProvider;
+                                                            const currentName = getProviderName(currentProvider);
+                                                            return <option key={currentProvider} value={currentProvider}>{currentName} (Current)</option>;
+                                                        })()}
+                                                        {/* Other providers */}
+                                                        {allProviders.filter(p => p !== config.selectedProvider).map(provider => (
+                                                            <option key={provider} value={provider}>{getProviderName(provider)}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary uppercase tracking-wider">Model</label>
+                                                        {promptModelProvider !== 'anthropic' && (
+                                                            <button
+                                                                onClick={() => handleFetchModels(promptModelProvider, true)}
+                                                                className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 bg-blue-50 dark:bg-gpt-hover px-2 py-0.5 rounded hover:bg-blue-100 transition-colors"
+                                                                disabled={fetchingModels[promptModelProvider]}
+                                                            >
+                                                                {fetchingModels[promptModelProvider] ? <RefreshCw size={10} className="animate-spin" /> : <List size={10} />}
+                                                                {fetchingModels[promptModelProvider] ? 'Loading...' : 'Refresh List'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="relative">
+                                                        {fetchedModels[promptModelProvider]?.length > 0 && !isPromptCustomModel ? (
+                                                            <SearchableSelect
+                                                                value={promptModelName}
+                                                                options={fetchedModels[promptModelProvider]}
+                                                                onChange={(value) => setPromptModelName(value)}
+                                                                onCustomClick={() => setIsPromptCustomModel(true)}
+                                                                placeholder="Select a model..."
+                                                            />
+                                                        ) : (
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    value={promptModelName}
+                                                                    onChange={(e) => setPromptModelName(e.target.value)}
+                                                                    placeholder="e.g. gpt-4o, claude-3.5-sonnet..."
+                                                                    className="w-full px-3 py-2.5 text-sm bg-slate-50 dark:bg-gpt-input border border-slate-200 dark:border-gpt-hover rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:text-gpt-text"
+                                                                />
+                                                                {fetchedModels[promptModelProvider]?.length > 0 && (
+                                                                    <button
+                                                                        onClick={() => setIsPromptCustomModel(false)}
+                                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-700 font-medium px-2 py-1 bg-blue-50 rounded"
+                                                                    >
+                                                                        Back to List
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingPromptModel(null);
+                                                            setPromptModelProvider('');
+                                                            setPromptModelName('');
+                                                            setIsPromptCustomModel(false);
+                                                        }}
+                                                        className="flex-1 px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-gpt-hover rounded-lg transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!promptModelProvider || !promptModelName.trim()) return;
+                                                            handleUpdatePrompt(idx, 'model', { provider: promptModelProvider, modelName: promptModelName });
+                                                            setEditingPromptModel(null);
+                                                            setPromptModelProvider('');
+                                                            setPromptModelName('');
+                                                            setIsPromptCustomModel(false);
+                                                        }}
+                                                        disabled={!promptModelProvider || !promptModelName.trim()}
+                                                        className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium text-sm rounded-lg transition-colors disabled:cursor-not-allowed"
+                                                    >
+                                                        Set Model
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            !prompt.model && (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingPromptModel(idx);
+                                                        setPromptModelProvider(config.selectedProvider);
+                                                        setPromptModelName('');
+                                                        setIsPromptCustomModel(false);
+                                                        // Auto-fetch models for current provider if not already fetched
+                                                        if (!fetchedModels[config.selectedProvider] && config.apiKeys[config.selectedProvider]?.length > 0) {
+                                                            handleFetchModels(config.selectedProvider, true);
+                                                        }
+                                                    }}
+                                                    className="text-xs px-3 py-1.5 bg-slate-100 dark:bg-gpt-input hover:bg-slate-200 dark:hover:bg-gpt-hover text-slate-600 dark:text-gpt-secondary font-medium rounded-lg border border-slate-200 dark:border-gpt-hover transition-all flex items-center gap-1.5"
+                                                >
+                                                    <Plus size={12} />
+                                                    Select Model
+                                                </button>
+                                            )
                                         )}
                                     </div>
                                 </div>

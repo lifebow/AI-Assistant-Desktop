@@ -186,8 +186,21 @@ export default function ChatInterface({
             const hasFreshContext = !!initialText || !!initialImage || !!selectedImage;
             const hasExistingConversation = initialMessages && initialMessages.length > 0;
 
+            // Build config override if prompt has a specific model
+            let promptConfig: AppConfig | undefined;
+            if (pendingAutoPrompt.model) {
+                promptConfig = {
+                    ...config,
+                    selectedProvider: pendingAutoPrompt.model.provider,
+                    selectedModel: {
+                        ...config.selectedModel,
+                        [pendingAutoPrompt.model.provider]: pendingAutoPrompt.model.modelName
+                    }
+                };
+            }
+
             if (pendingAutoPrompt.immediate && hasFreshContext && !hasExistingConversation) {
-                handleSubmit(pendingAutoPrompt.content);
+                handleSubmit(pendingAutoPrompt.content, promptConfig);
             } else {
                 // Just fill the input without auto-submitting
                 // Always strip ${text} placeholder when filling input manually
@@ -196,6 +209,12 @@ export default function ChatInterface({
                     .replace(/\n\n+/g, '\n\n')
                     .trim();
                 setInstruction(promptContent);
+
+                // If prompt has a model, temporarily switch to it
+                if (promptConfig) {
+                    setConfig(promptConfig);
+                }
+
                 if (textareaRef.current) {
                     textareaRef.current.focus();
                 }
@@ -361,8 +380,21 @@ export default function ChatInterface({
         const hasFreshContext = !!initialText || !!initialImage || !!selectedImage;
         const hasExistingConversation = messages.length > 0;
 
+        // Build config override if prompt has a specific model
+        let promptConfig: AppConfig | undefined;
+        if (prompt.model) {
+            promptConfig = {
+                ...config,
+                selectedProvider: prompt.model.provider,
+                selectedModel: {
+                    ...config.selectedModel,
+                    [prompt.model.provider]: prompt.model.modelName
+                }
+            };
+        }
+
         if (prompt.immediate && hasFreshContext && !hasExistingConversation) {
-            handleSubmit(prompt.content);
+            handleSubmit(prompt.content, promptConfig);
         } else {
             // Always strip ${text} placeholder when filling input manually
             let promptContent = prompt.content
@@ -370,6 +402,12 @@ export default function ChatInterface({
                 .replace(/\n\n+/g, '\n\n')  // Remove extra newlines
                 .trim();
             setInstruction(promptContent);
+
+            // If prompt has a model, temporarily switch to it
+            if (promptConfig) {
+                setConfig(promptConfig);
+            }
+
             if (textareaRef.current) {
                 textareaRef.current.focus();
             }
@@ -585,8 +623,9 @@ export default function ChatInterface({
         }
     };
 
-    const handleSubmit = async (overrideInstruction?: string) => {
+    const handleSubmit = async (overrideInstruction?: string, overrideConfig?: AppConfig) => {
         const textToSubmit = overrideInstruction !== undefined ? overrideInstruction : instruction;
+        const activeConfig = overrideConfig || config;
 
         if (!textToSubmit.trim()) return;
 
@@ -645,7 +684,7 @@ export default function ChatInterface({
         let isInNewMessage = false;
 
         try {
-            const res = await callApi(newMessages, config, (chunk) => {
+            const res = await callApi(newMessages, activeConfig, (chunk) => {
                 if (isInNewMessage) {
                     // Append to the new (follow-up) message
                     accumulatedText += chunk;

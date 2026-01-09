@@ -16,6 +16,10 @@ export interface PromptTemplate {
     key: string;
     modifiers: string[];
   } | null;
+  model?: {
+    provider: string;
+    modelName: string;
+  } | null;
 }
 
 export interface ChatMessage {
