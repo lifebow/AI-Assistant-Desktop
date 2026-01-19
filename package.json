@@ -1,7 +1,7 @@
 {
   "name": "ai-assistant",
   "private": true,
-  "version": "1.1.99",
+  "version": "1.1.104",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -8,7 +8,6 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
-import 'katex/dist/katex.min.css';
 import { clsx } from 'clsx';
 import { setStorage } from '../lib/storage';
 
@@ -1348,7 +1347,7 @@ export default function ChatInterface({
                                             remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
                                             rehypePlugins={[rehypeKatex]}
                                             components={{
-                                                a: ({ node, ...props }) => {
+                                                a: ({ node, ...props }: any) => {
                                                     const href = props.href || '';
                                                     if (href.startsWith('#source-')) {
                                                         const index = parseInt(href.replace('#source-', ''));
@@ -1375,7 +1374,7 @@ export default function ChatInterface({
                                                     }
                                                     return <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" />;
                                                 }
-                                            }}
+                                            } as any}
                                         >
                                             {/* Preprocess content to convert [^N] to [N](#source-N) */}
                                             {msg.content.replace(/\[\^(\d+)\]/g, '[$1](#source-$1)')}
@@ -1409,7 +1408,7 @@ export default function ChatInterface({
                                                                 remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
                                                                 rehypePlugins={[rehypeKatex]}
                                                                 components={{
-                                                                    a: ({ node, ...props }) => {
+                                                                    a: ({ node, ...props }: any) => {
                                                                         const href = props.href || '';
                                                                         if (href.startsWith('#source-')) {
                                                                             const index = parseInt(href.replace('#source-', ''));
@@ -1436,7 +1435,7 @@ export default function ChatInterface({
                                                                         }
                                                                         return <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" />;
                                                                     }
-                                                                }}
+                                                                } as any}
                                                             >
                                                                 {msg.webSearch.result.replace(/\[\^(\d+)\]/g, '[$1](#source-$1)')}
                                                             </ReactMarkdown>
