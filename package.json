@@ -1,7 +1,7 @@
 {
   "name": "ai-assistant",
   "private": true,
-  "version": "1.1.135",
+  "version": "1.1.136",
   "type": "module",
   "description": "A powerful, native AI assistant for macOS",
   "author": "Trung King",
