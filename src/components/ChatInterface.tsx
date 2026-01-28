@@ -176,17 +176,8 @@ export default function ChatInterface({
             // Standard Text Capture
             (window as any).electronAPI.onSelectedText((text: string) => {
                 if (text) {
-                    // Auto-append logic: Add to instruction input
-                    setInstruction(prev => {
-                        const trimmed = text.trim();
-                        if (!prev) return trimmed;
-                        // Avoid duplicates if possible
-                        if (prev.includes(trimmed)) return prev;
-                        return prev + "\n" + trimmed;
-                    });
-
-                    // Clear internal selection context to avoid duplication
-                    setSelectedText('');
+                    // New Logic: Set as Context, Replace existing
+                    setSelectedText(text.trim());
 
                     // Focus logic
                     if (textareaRef.current) {
@@ -718,9 +709,13 @@ export default function ChatInterface({
         }
     };
 
-    const handleSubmit = async (overrideInstruction?: string, overrideConfig?: AppConfig) => {
+    const handleSubmit = async (overrideInstruction?: string, overrideConfig?: AppConfig, overrideContext?: string, overrideImage?: string) => {
         const textToSubmit = overrideInstruction !== undefined ? overrideInstruction : instruction;
         const activeConfig = overrideConfig || config;
+
+        // Use overrides if provided, otherwise use state
+        const contextText = overrideContext !== undefined ? overrideContext : selectedText;
+        const contextImage = overrideImage !== undefined ? overrideImage : selectedImage;
 
         if (!textToSubmit.trim()) return;
 
@@ -737,27 +732,26 @@ export default function ChatInterface({
         abortControllerRef.current = new AbortController();
 
         let userContent = textToSubmit.trim();
+
+        // Append context if present
+        if (userContent.includes('${text}')) {
+            userContent = userContent.replace('${text}', contextText || '');
+        } else if (contextText) {
+            userContent = `${userContent}\n\nContext:\n${contextText}`;
+        }
+
         let messagePayload: ChatMessage;
 
-        if (messages.length === 0) {
-            if (userContent.includes('${text}')) {
-                userContent = userContent.replace('${text}', selectedText || '');
-            } else if (selectedText) {
-                userContent = `${userContent}\n\nContext:\n${selectedText}`;
-            }
-
-            if (selectedImage) {
-                messagePayload = {
-                    role: 'user',
-                    content: userContent,
-                    image: selectedImage
-                };
-            } else {
-                messagePayload = { role: 'user', content: userContent };
-            }
+        if (contextImage) {
+            messagePayload = {
+                role: 'user',
+                content: userContent,
+                image: contextImage
+            };
         } else {
             messagePayload = { role: 'user', content: userContent };
         }
+
 
         const newMessages = [...messages, messagePayload];
         setMessages(newMessages);
@@ -1061,11 +1055,18 @@ export default function ChatInterface({
                 if (prompt) {
                     console.log('Executing triggered prompt:', prompt.name);
 
-                    const baseText = text || instruction;
+                    // Decide content based on whether we have captured text
+                    let promptContent = prompt.content;
 
-                    let promptContent = prompt.content
-                        .replace(/\$\{text\}/g, baseText)
-                        .trim();
+                    if (text) {
+                        // If we have captured text, it goes to Badge (Context).
+                        // Remove placeholder from instruction to avoid duplication/mess.
+                        promptContent = promptContent.replace(/\$\{text\}/g, '').trim();
+                    } else {
+                        // Fallback: use current instruction as baseText if no capture
+                        const baseText = instruction;
+                        promptContent = promptContent.replace(/\$\{text\}/g, baseText).trim();
+                    }
 
                     if (prompt.immediate) {
                         let promptConfig: AppConfig | undefined;
@@ -1079,9 +1080,11 @@ export default function ChatInterface({
                                 }
                             };
                         }
-                        handleSubmit(promptContent, promptConfig);
+                        // Pass 'text' as overrideContext to ensure it's used even if state isn't updated yet
+                        handleSubmit(promptContent, promptConfig, text);
                     } else {
                         setInstruction(promptContent);
+                        if (text) setSelectedText(text); // Ensure badge is updated
                         if (textareaRef.current) textareaRef.current.focus();
                     }
                 }
@@ -1321,7 +1324,7 @@ export default function ChatInterface({
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar text-left" onMouseDown={e => e.stopPropagation()}>
                 {/* Context Badge */}
-                {selectedText && messages.length === 0 && (
+                {selectedText && (
                     <div className="bg-blue-50 dark:bg-gpt-sidebar border border-blue-100 dark:border-gpt-hover rounded-xl p-3 mb-4">
                         <div className="flex justify-between items-start">
                             <div className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-1">Current Context</div>
@@ -1334,7 +1337,7 @@ export default function ChatInterface({
                 )}
 
                 {/* Image Context Badge - Only shows before first message */}
-                {selectedImage && messages.length === 0 && (
+                {selectedImage && (
                     <div className="flex justify-end mb-4">
                         <div className="inline-flex flex-col bg-blue-50 dark:bg-gpt-sidebar border border-blue-100 dark:border-gpt-hover rounded-xl p-2">
                             <div className="flex items-center justify-between gap-3 mb-2">

@@ -54,7 +54,7 @@ function createMainWindow() {
       nodeIntegration: false,
     },
     title: 'AI Assistant',
-    titleBarStyle: 'hiddenInset', // macOS style
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 15, y: 15 },
     show: false, // Don't show until ready
   });
@@ -102,7 +102,7 @@ function createSettingsWindow() {
       nodeIntegration: false,
     },
     title: 'AI Assistant Settings',
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 15, y: 15 },
     show: false,
   });
