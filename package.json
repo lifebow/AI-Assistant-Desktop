@@ -13,8 +13,8 @@
   "scripts": {
     "dev": "vite",
     "dev:electron": "vite --mode electron",
-    "build": "node scripts/bump-version.js && tsc -b && vite build && vite build -c vite.content.config.ts",
-    "build:ci": "tsc -b && vite build && vite build -c vite.content.config.ts",
+    "build": "node scripts/bump-version.js && tsc -b && vite build",
+    "build:ci": "tsc -b && vite build",
     "build:electron": "tsc && vite build --mode electron",
     "package:mac": "npm run build:electron && electron-builder --mac",
     "package:win": "npm run build:electron && electron-builder --win",
@@ -26,7 +26,6 @@
   "dependencies": {
     "@jitsi/robotjs": "^0.6.21",
     "@tailwindcss/postcss": "^4.1.17",
-    "@types/chrome": "^0.1.32",
     "@types/uuid": "^10.0.0",
     "active-win": "^8.2.1",
     "clsx": "^2.1.1",
@@ -42,8 +41,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwind-merge": "^3.4.0",
-    "uuid": "^13.0.0",
-    "webextension-polyfill": "^0.12.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -102,10 +100,9 @@
     },
     "win": {
       "target": [
-        "nsis",
         "portable"
       ],
-      "icon": "public/icons/icon128.png"
+      "icon": "public/icons/icon512.png"
     },
     "nsis": {
       "oneClick": false,

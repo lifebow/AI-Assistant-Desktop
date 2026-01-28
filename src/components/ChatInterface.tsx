@@ -10,6 +10,7 @@ import rehypeKatex from 'rehype-katex';
 import remarkBreaks from 'remark-breaks';
 import { clsx } from 'clsx';
 import { setStorage } from '../lib/storage';
+import { WindowsWindowControls } from './WindowsWindowControls';
 // CropOverlay is now handled in a dedicated Electron window
 
 const ProviderDisplayNames: Record<string, string> = {
@@ -1131,6 +1132,8 @@ export default function ChatInterface({
         return { provider: p, models: filteredModels };
     }).filter(g => g.models.length > 0);
 
+
+
     return (
         <div className="w-full h-full bg-slate-50 dark:bg-gpt-main flex flex-col font-sans text-slate-900 dark:text-gpt-text overflow-hidden">
             {/* Header */}
@@ -1138,10 +1141,13 @@ export default function ChatInterface({
                 className={clsx(
                     "flex items-center justify-between px-5 py-3 bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover shrink-0 z-20 relative draggable-header cursor-move",
                     // Add left padding for macOS traffic lights if in Electron
-                    (window as any).electronAPI ? "pl-20" : ""
+                    (window as any).electronAPI?.platform === 'darwin' ? "pl-20" : "",
+                    // Add right padding for Windows window controls
+                    (window as any).electronAPI?.platform === 'win32' ? "pr-32" : ""
                 )}
                 style={{ WebkitAppRegion: 'drag' } as any}
             >
+                <WindowsWindowControls />
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                     <img
                         src={typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL("/icons/icon32.png") : (import.meta.env.PROD ? "../../icons/icon32.png" : "/icons/icon32.png")}

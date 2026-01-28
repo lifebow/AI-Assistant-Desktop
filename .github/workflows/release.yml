@@ -65,7 +65,10 @@ jobs:
   release:
     needs: check-version
     if: needs.check-version.outputs.version_changed == 'true'
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     
     steps:
       - name: Checkout code
@@ -81,7 +84,14 @@ jobs:
         run: npm ci
 
       - name: Build and Package (Mac)
+        if: matrix.os == 'macos-latest'
         run: npm run package:mac -- -c.mac.identity=null
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm run package:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -95,12 +105,13 @@ jobs:
             
             This is an automated release.
             
-            ### Installation (macOS)
-            1. Download the `.dmg` file.
-            2. Open and drag to Applications.
+            ### Installation
+            - **macOS**: Download the `.dmg` file.
+            - **Windows**: Download the `.exe` (Portable) file.
           files: |
             release/*.dmg
             release/*.zip
+            release/*.exe
           draft: false
           prerelease: false
         env:

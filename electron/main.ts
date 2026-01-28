@@ -69,7 +69,9 @@ function createMainWindow() {
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    mainWindow?.webContents.openDevTools();
+    if (isDev) {
+      mainWindow?.webContents.openDevTools();
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -587,6 +589,38 @@ function setupAppMenu() {
     }
   });
 }
+
+// Window controls
+ipcMain.on('window-minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  win?.minimize();
+});
+
+ipcMain.on('window-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win?.isMaximized()) {
+    win.unmaximize();
+  } else {
+    win?.maximize();
+  }
+});
+
+ipcMain.on('window-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && win === mainWindow && process.platform === 'darwin') {
+    win.hide();
+  } else {
+    // Close settings window or invalid windows, 
+    // but for main window on Windows, we might want to hide to tray?
+    // User intent on "X" usually means close or hide.
+    // Let's stick to hiding Main Window to tray to match global hotkey workflow.
+    if (win && win === mainWindow) {
+      win.hide();
+    } else {
+      win?.close();
+    }
+  }
+});
 
 // App lifecycle
 app.whenReady().then(() => {

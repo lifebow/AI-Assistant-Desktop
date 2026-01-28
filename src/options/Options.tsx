@@ -9,6 +9,7 @@ import {
 import { SearchableSelect } from './SearchableSelect';
 import { clsx } from 'clsx';
 import logoUrl from '../assets/logo.png';
+import { WindowsWindowControls } from '../components/WindowsWindowControls';
 
 
 const Providers: Provider[] = ['openai', 'google', 'anthropic', 'openrouter', 'perplexity'];
@@ -316,14 +317,19 @@ export default function Options({ onBack }: OptionsProps) {
         </div>
     );
 
+
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-gpt-main font-sans text-slate-800 dark:text-gpt-text selection:bg-blue-100 selection:text-blue-900 pb-20">
             {/* Header */}
-            <div className="bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover sticky top-0 z-10 shadow-sm" style={{ WebkitAppRegion: 'drag' } as any}>
+            <div className="bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover sticky top-0 z-10 shadow-sm relative" style={{ WebkitAppRegion: 'drag' } as any}>
+                <WindowsWindowControls />
                 <div className={clsx(
                     "max-w-5xl mx-auto px-6 py-4 flex items-center justify-between",
                     // Add left padding for macOS traffic lights if in Electron
-                    (window as any).electronAPI ? "pl-24" : ""
+                    (window as any).electronAPI?.platform === 'darwin' ? "pl-24" : "",
+                    // Add right padding for Windows controls
+                    (window as any).electronAPI?.platform === 'win32' ? "pr-32" : ""
                 )}>
                     <div className="flex items-center gap-3">
                         {onBack && (
