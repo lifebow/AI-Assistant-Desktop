@@ -1,5 +1,28 @@
 import type { AppConfig, ChatMessage } from './types';
 
+// Environment detection
+const isChrome = typeof chrome !== 'undefined' && chrome.storage?.local !== undefined;
+
+// Safe local storage helpers for api.ts
+const safeLocalGet = async <T>(key: string): Promise<T | null> => {
+  if (!isChrome) return null;
+  try {
+    const result = await chrome.storage.local.get(key);
+    return (result[key] as T) || null;
+  } catch {
+    return null;
+  }
+};
+
+const safeLocalSet = async (key: string, value: unknown): Promise<void> => {
+  if (!isChrome) return;
+  try {
+    await chrome.storage.local.set({ [key]: value });
+  } catch (e) {
+    console.error('Failed to save to storage:', e);
+  }
+};
+
 interface ApiResponse {
   text: string;
   error?: string;
@@ -443,8 +466,8 @@ const getNextMonthReset = (): number => {
 // Get exhausted keys from storage
 const getExhaustedKeys = async (): Promise<ExhaustedKeyEntry[]> => {
   try {
-    const result = await chrome.storage.local.get(EXHAUSTED_KEYS_STORAGE_KEY) as Record<string, ExhaustedKeyEntry[]>;
-    const entries: ExhaustedKeyEntry[] = result[EXHAUSTED_KEYS_STORAGE_KEY] || [];
+    const entries = await safeLocalGet<ExhaustedKeyEntry[]>(EXHAUSTED_KEYS_STORAGE_KEY);
+    if (!entries) return [];
     // Filter out expired entries (past their reset date)
     const now = Date.now();
     return entries.filter(e => e.expiresAt > now);
@@ -467,7 +490,7 @@ const markKeyExhausted = async (key: string, provider: string): Promise<void> =>
       exhaustedAt: Date.now(),
       expiresAt: getNextMonthReset()
     });
-    await chrome.storage.local.set({ [EXHAUSTED_KEYS_STORAGE_KEY]: entries });
+    await safeLocalSet(EXHAUSTED_KEYS_STORAGE_KEY, entries);
     console.log(`API key marked as exhausted for ${provider}, will reset on next month`);
   } catch (e) {
     console.error('Failed to mark key as exhausted:', e);
@@ -643,8 +666,21 @@ export const callApi = async (
   onWebSearch?: (status: { query: string; result?: string; isSearching: boolean; sources?: Array<{ title: string; url: string; snippet?: string }>; startNewMessage?: boolean }) => void,
   onReasoning?: (text: string) => void
 ): Promise<ApiResponse> => {
+  // Electron context -> Direct Call (same as extension context)
+  const isElectronEnv = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
+  if (isElectronEnv) {
+    if (onChunk) {
+      return executeApiStream(messages, config, onChunk, signal, onWebSearch, onReasoning);
+    } else {
+      return executeApiCall(messages, config);
+    }
+  }
+
+  // Check if chrome.runtime is available
+  const hasChromeRuntime = typeof chrome !== 'undefined' && chrome.runtime?.connect;
+
   // Check context
-  if (window.location.protocol.startsWith('http')) {
+  if (hasChromeRuntime && window.location.protocol.startsWith('http')) {
     // Content Script -> Proxy to Background
     if (onChunk) {
       return new Promise((resolve, reject) => {
@@ -686,7 +722,7 @@ export const callApi = async (
       });
     }
   } else {
-    // Extension Context -> Direct Call
+    // Extension Context or Browser (no extension) -> Direct Call
     if (onChunk) {
       return executeApiStream(messages, config, onChunk, signal, onWebSearch, onReasoning);
     } else {
@@ -744,6 +780,14 @@ export const fetchModels = async (
   apiKey: string,
   baseUrl?: string
 ): Promise<string[]> => {
+  // Electron or non-extension context -> Direct call
+  const isElectronEnv = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
+  const hasChromeRuntime = typeof chrome !== 'undefined' && chrome.runtime?.sendMessage;
+
+  if (isElectronEnv || !hasChromeRuntime) {
+    return executeFetchModels(provider, apiKey, baseUrl);
+  }
+
   if (window.location.protocol.startsWith('http')) {
     return chrome.runtime.sendMessage({
       type: 'PROXY_FETCH_MODELS',

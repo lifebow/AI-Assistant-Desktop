@@ -1,25 +1,78 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import electron from 'vite-plugin-electron';
+import electronRenderer from 'vite-plugin-electron-renderer';
+import { resolve } from 'path';
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  base: './', // Ensure relative paths for Electron
+  plugins: [
+    react(),
+    electron([
+      {
+        // Main process entry
+        entry: 'electron/main.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: ['electron', 'electron-store', 'electron-updater'],
+            },
+          },
+        },
+      },
+      {
+        // Preload script
+        entry: 'electron/preload.ts',
+        onstart(options) {
+          // Notify the Renderer process to reload the page when the Preload scripts build is complete
+          options.reload();
+        },
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            lib: {
+              entry: 'electron/preload.ts',
+              formats: ['cjs'],
+              fileName: () => 'preload.js',
+            },
+            rollupOptions: {
+              external: ['electron'],
+            },
+          },
+        },
+      },
+      {
+        // Crop overlay preload script
+        entry: 'electron/crop-preload.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            lib: {
+              entry: 'electron/crop-preload.ts',
+              formats: ['cjs'],
+              fileName: () => 'crop-preload.js',
+            },
+            rollupOptions: {
+              external: ['electron'],
+            },
+          },
+        },
+      },
+    ]),
+    electronRenderer(),
+  ],
   build: {
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'src/popup/index.html'),
         options: resolve(__dirname, 'src/options/index.html'),
-        background: resolve(__dirname, 'src/background/index.ts'),
-      },
-      output: {
-        entryFileNames: 'assets/[name].js',
-        chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name].[ext]',
+        crop: resolve(__dirname, 'src/crop/index.html'),
       },
     },
   },
-  esbuild: {
-    charset: 'ascii',
+  server: {
+    port: 5173,
   },
-})
+});

@@ -1,25 +1,69 @@
 import { type AppConfig, DEFAULT_CONFIG } from './types';
 
+// Detect if we're running in Electron
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
+const isChrome = typeof chrome !== 'undefined' && chrome.storage !== undefined;
+
 export const getStorage = async (): Promise<AppConfig> => {
-  const result = await chrome.storage.sync.get('appConfig');
-  if (!result.appConfig) {
-    return DEFAULT_CONFIG;
+  // Electron environment
+  if (isElectron) {
+    try {
+      const config = await (window as any).electronAPI.getConfig();
+      if (!config) {
+        return DEFAULT_CONFIG;
+      }
+
+      // Deep merge
+      return {
+        ...DEFAULT_CONFIG,
+        ...config,
+        apiKeys: { ...DEFAULT_CONFIG.apiKeys, ...config.apiKeys },
+        customBaseUrls: { ...DEFAULT_CONFIG.customBaseUrls, ...config.customBaseUrls },
+        selectedModel: { ...DEFAULT_CONFIG.selectedModel, ...config.selectedModel },
+      };
+    } catch (error) {
+      console.error('Failed to get Electron config:', error);
+      return DEFAULT_CONFIG;
+    }
   }
 
-  // Deep merge to ensure new providers are included when loading old config
-  const stored = result.appConfig as Partial<AppConfig>;
-  return {
-    ...DEFAULT_CONFIG,
-    ...stored,
-    // Deep merge nested objects to include new provider defaults
-    apiKeys: { ...DEFAULT_CONFIG.apiKeys, ...stored.apiKeys },
-    customBaseUrls: { ...DEFAULT_CONFIG.customBaseUrls, ...stored.customBaseUrls },
-    selectedModel: { ...DEFAULT_CONFIG.selectedModel, ...stored.selectedModel },
-  };
+  // Chrome extension environment
+  if (isChrome) {
+    const result = await chrome.storage.sync.get('appConfig');
+    if (!result.appConfig) {
+      return DEFAULT_CONFIG;
+    }
+
+    const stored = result.appConfig as Partial<AppConfig>;
+    return {
+      ...DEFAULT_CONFIG,
+      ...stored,
+      apiKeys: { ...DEFAULT_CONFIG.apiKeys, ...stored.apiKeys },
+      customBaseUrls: { ...DEFAULT_CONFIG.customBaseUrls, ...stored.customBaseUrls },
+      selectedModel: { ...DEFAULT_CONFIG.selectedModel, ...stored.selectedModel },
+    };
+  }
+
+  // Fallback
+  return DEFAULT_CONFIG;
 };
 
 export const setStorage = async (config: AppConfig): Promise<void> => {
-  await chrome.storage.sync.set({ appConfig: config });
+  // Electron environment
+  if (isElectron) {
+    try {
+      await (window as any).electronAPI.setConfig(config);
+    } catch (error) {
+      console.error('Failed to set Electron config:', error);
+    }
+    return;
+  }
+
+  // Chrome extension environment
+  if (isChrome) {
+    await chrome.storage.sync.set({ appConfig: config });
+    return;
+  }
 };
 
 /**
@@ -102,9 +146,20 @@ export const extractTextFromSelection = (): string => {
 };
 
 export const getSelectedText = async (): Promise<string> => {
+  // In Electron, we use the Electron API to get selected text
+  if (isElectron) {
+    try {
+      const text = await (window as any).electronAPI.getSelectedText();
+      return text || '';
+    } catch (e) {
+      console.warn('Failed to get selected text in Electron:', e);
+      return '';
+    }
+  }
+
   // If we're in a content script, chrome.tabs won't be available (or full API won't be).
   // We can just use window.getSelection() directly.
-  if (!chrome.tabs) {
+  if (!isChrome || !chrome.tabs) {
     return extractTextFromSelection();
   }
 

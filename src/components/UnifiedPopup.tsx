@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import ChatInterface from './ChatInterface';
+import Options from '../options/Options';
 import type { AppConfig, PromptTemplate } from '../lib/types';
 import { useTheme } from '../lib/theme';
 import { useAppConfig, useChatState } from '../lib/hooks';
 import { setStorage } from '../lib/storage';
 
-export type PopupMode = 'extension' | 'content';
+export type PopupMode = 'extension' | 'content' | 'desktop';
 
 interface UnifiedPopupProps {
     mode: PopupMode;
@@ -35,6 +36,7 @@ export default function UnifiedPopup({
     initialY = 0
 }: UnifiedPopupProps) {
     const isContentMode = mode === 'content';
+    const [view, setView] = useState<'chat' | 'settings'>('chat');
 
     // Position state (only used in content mode)
     const [pos, setPos] = useState({ x: initialX, y: initialY });
@@ -167,10 +169,34 @@ export default function UnifiedPopup({
     // Loading state
     if (configLoading || !hydrated || !config) return null;
 
-    // Extension mode - simple wrapper
+
+
+    const handleOpenSettings = async () => {
+        if (!isContentMode && (window as any).electronAPI) {
+            await (window as any).electronAPI.resizeWindow(900, 700);
+            setView('settings');
+        }
+    };
+
+    const handleBackToChat = async () => {
+        if (!isContentMode && (window as any).electronAPI) {
+            await (window as any).electronAPI.resizeWindow(500, 700); // Standard Chat Size
+            setView('chat');
+        }
+    };
+
+    // Extension mode / Desktop Mode - simple wrapper
     if (!isContentMode) {
+        if (view === 'settings') {
+            return (
+                <div className="w-full h-full bg-slate-50 dark:bg-gpt-main">
+                    <Options onBack={handleBackToChat} />
+                </div>
+            );
+        }
+
         return (
-            <div className="w-[450px] h-[600px] overflow-hidden">
+            <div className="w-[100vw] h-[100vh] overflow-hidden">
                 <ChatInterface
                     config={config}
                     initialText={state.selectedText}
@@ -180,7 +206,8 @@ export default function UnifiedPopup({
                     pendingAutoPrompt={resolvedPendingPrompt}
                     onStateChange={updateState}
                     onConfigUpdate={handleConfigUpdate}
-                    onClose={handleClose}
+                    onClose={mode === 'desktop' ? undefined : handleClose}
+                    onOpenSettings={handleOpenSettings}
                 />
             </div>
         );

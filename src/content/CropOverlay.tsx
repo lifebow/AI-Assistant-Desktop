@@ -69,24 +69,48 @@ export const startCropMode = (onComplete: (imageDataUrl: string) => void, onCanc
 interface CropOverlayProps {
     onComplete: (imageDataUrl: string) => void;
     onCancel: () => void;
+    initialScreenshot?: string | null; // Pre-captured screenshot from main process
 }
 
-const CropOverlay = ({ onComplete, onCancel }: CropOverlayProps) => {
+const CropOverlay = ({ onComplete, onCancel, initialScreenshot }: CropOverlayProps) => {
     const [isSelecting, setIsSelecting] = useState(false);
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
-    const [screenshot, setScreenshot] = useState<string | null>(null);
+    const [screenshot, setScreenshot] = useState<string | null>(initialScreenshot || null);
 
-    // Capture screenshot on mount
+    // Capture screenshot on mount (only if no initialScreenshot provided)
     useEffect(() => {
+        // If we already have a screenshot from props, don't capture again
+        if (initialScreenshot) {
+            setScreenshot(initialScreenshot);
+            return;
+        }
+
         const captureScreen = async () => {
             try {
-                // Request screenshot from background script
-                const response = await chrome.runtime.sendMessage({ action: 'capture_screenshot' });
-                if (response?.dataUrl) {
-                    setScreenshot(response.dataUrl);
+                // Check for Electron API first
+                if ((window as any).electronAPI?.captureScreen) {
+                    const dataUrl = await (window as any).electronAPI.captureScreen();
+                    if (dataUrl) {
+                        setScreenshot(dataUrl);
+                    } else {
+                        console.error('Failed to capture screenshot (Electron)');
+                        onCancel();
+                    }
+                    return;
+                }
+
+                // Fallback to Chrome Extension API
+                if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+                    const response = await chrome.runtime.sendMessage({ action: 'capture_screenshot' });
+                    if (response?.dataUrl) {
+                        setScreenshot(response.dataUrl);
+                    } else {
+                        console.error('Failed to capture screenshot:', response?.error);
+                        onCancel();
+                    }
                 } else {
-                    console.error('Failed to capture screenshot:', response?.error);
+                    console.error('No capture method available');
                     onCancel();
                 }
             } catch (err) {
@@ -95,7 +119,7 @@ const CropOverlay = ({ onComplete, onCancel }: CropOverlayProps) => {
             }
         };
         captureScreen();
-    }, [onCancel]);
+    }, [onCancel, initialScreenshot]);
 
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
         if (e.key === 'Escape') {

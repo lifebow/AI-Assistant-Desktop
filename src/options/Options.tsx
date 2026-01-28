@@ -3,9 +3,12 @@ import { type AppConfig, DEFAULT_CONFIG, type Provider, type PromptTemplate } fr
 import { getStorage, setStorage } from '../lib/storage';
 import { fetchModels } from '../lib/api';
 import { useTheme } from '../lib/theme';
-import { Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X, Download, Upload, GripVertical } from 'lucide-react';
+import {
+    Trash2, Plus, RotateCcw, Eye, EyeOff, Key, MessageSquareText, Settings2, CheckCircle2, RefreshCw, List, Keyboard, Cpu, X, Download, Upload, GripVertical, ChevronLeft
+} from 'lucide-react';
 import { SearchableSelect } from './SearchableSelect';
 import { clsx } from 'clsx';
+import logoUrl from '../assets/logo.png';
 
 
 const Providers: Provider[] = ['openai', 'google', 'anthropic', 'openrouter', 'perplexity'];
@@ -18,7 +21,11 @@ const ProviderDisplayNames: Record<Provider, string> = {
     perplexity: 'Perplexity (Web Search)'
 };
 
-export default function Options() {
+interface OptionsProps {
+    onBack?: () => void;
+}
+
+export default function Options({ onBack }: OptionsProps) {
     const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'general' | 'providers' | 'prompts' | 'hotkeys'>('general');
@@ -312,17 +319,31 @@ export default function Options() {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-gpt-main font-sans text-slate-800 dark:text-gpt-text selection:bg-blue-100 selection:text-blue-900 pb-20">
             {/* Header */}
-            <div className="bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover sticky top-0 z-10 shadow-sm">
-                <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="bg-white dark:bg-gpt-sidebar border-b border-slate-200 dark:border-gpt-hover sticky top-0 z-10 shadow-sm" style={{ WebkitAppRegion: 'drag' } as any}>
+                <div className={clsx(
+                    "max-w-5xl mx-auto px-6 py-4 flex items-center justify-between",
+                    // Add left padding for macOS traffic lights if in Electron
+                    (window as any).electronAPI ? "pl-24" : ""
+                )}>
                     <div className="flex items-center gap-3">
-                        <img src="/icons/icon48.png" alt="Logo" className="w-10 h-10" />
+                        {onBack && (
+                            <button
+                                onClick={onBack}
+                                className="mr-2 p-2 hover:bg-slate-100 dark:hover:bg-gpt-hover rounded-full transition-colors text-slate-500 dark:text-gpt-secondary"
+                                title="Back to Chat"
+                                style={{ WebkitAppRegion: 'no-drag' } as any}
+                            >
+                                <ChevronLeft size={20} />
+                            </button>
+                        )}
+                        <img src={logoUrl} alt="Logo" className="w-10 h-10" />
                         <div>
                             <h1 className="text-xl font-bold text-slate-900 dark:text-gpt-text tracking-tight">AI Assistant</h1>
                             <p className="text-slate-500 dark:text-gpt-secondary text-xs font-medium">Extension Configuration</p>
                         </div>
                     </div>
 
-                    <div className="flex gap-1 bg-slate-100 dark:bg-gpt-input p-1 rounded-lg border border-slate-200/60 dark:border-gpt-hover">
+                    <div className="flex gap-1 bg-slate-100 dark:bg-gpt-input p-1 rounded-lg border border-slate-200/60 dark:border-gpt-hover" style={{ WebkitAppRegion: 'no-drag' } as any}>
                         <button
                             onClick={() => setActiveTab('general')}
                             className={clsx(
@@ -373,7 +394,7 @@ export default function Options() {
                 </div>
             </div>
 
-            <div className="max-w-4xl mx-auto p-6 md:py-10">
+            <div className="max-w-5xl mx-auto p-6 md:py-10">
                 {/* Success Toast */}
                 <div className={clsx(
                     "fixed bottom-6 right-6 bg-slate-900 dark:bg-gpt-sidebar text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform z-50 border border-transparent dark:border-gpt-hover",
@@ -391,7 +412,7 @@ export default function Options() {
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                                 Appearance
                             </h3>
-                            <div className="max-w-md">
+                            <div className="w-full">
                                 <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Theme</label>
                                 <div className="relative">
                                     <select
@@ -408,7 +429,7 @@ export default function Options() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="max-w-md mt-6">
+                            <div className="w-full mt-6">
                                 <label className="flex items-center justify-between cursor-pointer group">
                                     <div>
                                         <span className="text-sm font-medium text-slate-700 dark:text-gpt-text group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Always expand reasoning</span>
@@ -434,7 +455,7 @@ export default function Options() {
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                                 Startup
                             </h3>
-                            <div className="max-w-md">
+                            <div className="w-full">
                                 <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Startup Mode</label>
                                 <div className="relative">
                                     <select
@@ -460,7 +481,7 @@ export default function Options() {
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                                 Web Search
                             </h3>
-                            <div className="max-w-md space-y-4">
+                            <div className="w-full space-y-4">
                                 {/* Enable Web Search Toggle */}
                                 <label className="flex items-center justify-between cursor-pointer group">
                                     <div>
@@ -591,7 +612,7 @@ export default function Options() {
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
                                 Default Provider
                             </h3>
-                            <div className="max-w-md">
+                            <div className="w-full">
                                 <label className="block text-xs font-semibold text-slate-500 dark:text-gpt-secondary mb-1.5 uppercase tracking-wider">Select Provider</label>
                                 <div className="relative">
                                     <select
@@ -1330,7 +1351,7 @@ export default function Options() {
                                 Click the input box below and press your desired key combination.
                             </p>
 
-                            <div className="max-w-md">
+                            <div className="w-full">
                                 <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary mb-2 uppercase tracking-wider">Shortcut</label>
                                 <div
                                     className={clsx(
@@ -1381,7 +1402,7 @@ export default function Options() {
                                 Define a keyboard shortcut to capture a region of the screen and attach it to the chat.
                             </p>
 
-                            <div className="max-w-md">
+                            <div className="w-full">
                                 <label className="block text-xs font-bold text-slate-500 dark:text-gpt-secondary mb-2 uppercase tracking-wider">Shortcut</label>
                                 <div
                                     className={clsx(

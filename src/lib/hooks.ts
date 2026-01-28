@@ -2,6 +2,42 @@ import { useState, useEffect } from 'react';
 import { type AppConfig, type ChatMessage, DEFAULT_CONFIG } from './types';
 import { getStorage, setStorage, getSelectedText } from './storage';
 
+// Detect environment
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
+const isChrome = typeof chrome !== 'undefined' && chrome.storage !== undefined;
+
+// Abstracted local storage helpers
+const getLocalStorage = async (keys: string[]): Promise<Record<string, unknown>> => {
+    if (isElectron) {
+        // In Electron, we use main process storage or just return empty
+        // For now, Electron doesn't need trigger flags
+        return {};
+    }
+    if (isChrome && chrome.storage?.local) {
+        return chrome.storage.local.get(keys);
+    }
+    return {};
+};
+
+const setLocalStorage = async (data: Record<string, unknown>): Promise<void> => {
+    if (isElectron) {
+        // In Electron, handled by main process or ignored
+        return;
+    }
+    if (isChrome && chrome.storage?.local) {
+        await chrome.storage.local.set(data);
+    }
+};
+
+const removeLocalStorage = async (keys: string | string[]): Promise<void> => {
+    if (isElectron) {
+        return;
+    }
+    if (isChrome && chrome.storage?.local) {
+        await chrome.storage.local.remove(keys);
+    }
+};
+
 export const useAppConfig = (initialConfig?: AppConfig) => {
     const [config, setConfigState] = useState<AppConfig>(initialConfig || DEFAULT_CONFIG);
     const [loading, setLoading] = useState(!initialConfig);
@@ -62,13 +98,18 @@ export const useChatState = ({
             // Get page text if no initial text provided
             let pageText = initialText;
             if (!pageText && !isFreshContext) {
-                pageText = await getSelectedText();
+                try {
+                    pageText = await getSelectedText();
+                } catch (e) {
+                    // In Electron or non-extension context, this may fail
+                    pageText = '';
+                }
             }
 
             // Check triggers from background (context menu) if in extension context
             // In content script context, these are usually passed as props.
-            // We can check chrome.storage.local for trigger flags regardless.
-            const storage = await chrome.storage.local.get(['contextSelection', 'contextImage', 'autoExecutePromptId', 'popupState']);
+            // In Electron, we skip this and just use props/defaults.
+            const storage = await getLocalStorage(['contextSelection', 'contextImage', 'autoExecutePromptId', 'popupState']);
 
             const hasContextTrigger = storage.contextSelection || storage.contextImage || storage.autoExecutePromptId;
             // If explicit fresh context passed via props, we treat it as a trigger too.
@@ -78,16 +119,16 @@ export const useChatState = ({
                 // Start fresh
                 let currentText = initialText || pageText; // Prefer prop input, fallback to page/stored
                 let currentImage = initialImage;
-                let currentInstruction = initialInstruction;
+                const currentInstruction = initialInstruction;
 
                 if (storage.contextSelection) {
                     currentText = storage.contextSelection as string;
-                    await chrome.storage.local.remove('contextSelection');
+                    await removeLocalStorage('contextSelection');
                 }
 
                 if (storage.contextImage) {
                     currentImage = storage.contextImage as string;
-                    await chrome.storage.local.remove('contextImage');
+                    await removeLocalStorage('contextImage');
                 } else if (!isFreshContext) {
                     // If triggered by text context only (and not props), ensure image is clear
                     // UNLESS props provided an image?
@@ -96,11 +137,11 @@ export const useChatState = ({
 
                 if (storage.autoExecutePromptId) {
                     setAutoExecutePromptId(storage.autoExecutePromptId as string);
-                    await chrome.storage.local.remove('autoExecutePromptId');
+                    await removeLocalStorage('autoExecutePromptId');
                 }
 
                 // Clear any stored state since we're starting a new explicit task
-                await chrome.storage.local.remove('popupState');
+                await removeLocalStorage('popupState');
 
                 setState({
                     instruction: currentInstruction,
@@ -112,7 +153,12 @@ export const useChatState = ({
             } else {
                 // Restore previous state if available
                 if (storage.popupState) {
-                    const s = storage.popupState as any;
+                    const s = storage.popupState as {
+                        instruction?: string;
+                        messages?: ChatMessage[];
+                        selectedText?: string;
+                        selectedImage?: string | null;
+                    };
                     setState({
                         instruction: s.instruction || '',
                         messages: s.messages || [],
@@ -141,7 +187,7 @@ export const useChatState = ({
                 selectedImage: updated.selectedImage,
                 timestamp: Date.now()
             };
-            chrome.storage.local.set({ popupState: stateToSave });
+            setLocalStorage({ popupState: stateToSave });
             return updated;
         });
     };
